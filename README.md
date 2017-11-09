@@ -2,7 +2,7 @@ The [billstclair/elm-s3](http://package.elm-lang.org/packages/billstclair/elm-s3
 
 The `example` directory has some sample code, with a simple user interface.
 
-In order to use it, you'll need to get a secret key and access key. You can get thoseon the [API Tokens](https://cloud.digitalocean.com/settings/api/tokens) page for DigitalOcean Spaces. There are choices for Amazon AWS, but you'll probably want to create keys from the [Identity and Access Management (IAM)][https://console.aws.amazon.com/iam/] console.
+In order to use it, you'll need to get a secret key and access key. You can get thoseon the [API Tokens](https://cloud.digitalocean.com/settings/api/tokens) page for DigitalOcean Spaces. There are choices for Amazon AWS, but you'll probably want to create keys from the [Identity and Access Management (IAM)](https://console.aws.amazon.com/iam/) console.
 
 Kevin Tonon has already done a lot of the basic work for this in his unreleased [ktonen/elm-aws-core](https://github.com/ktonon/elm-aws-core) package, which I found while looking at the source for [ktonen/elm-crypto](http://package.elm-lang.org/packages/ktonon/elm-crypto/latest) (HMAC and SHA).
 
