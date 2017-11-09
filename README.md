@@ -9,3 +9,9 @@ Kevin Tonon has already done a lot of the basic work for this in his unreleased 
 I haven't decided yet whether to use [crazymykl/ex-em-elm](http://package.elm-lang.org/packages/crazymykl/ex-em-elm/latest) or [eeue56/elm-xml](http://package.elm-lang.org/packages/eeue56/elm-xml/latest), though the latter will be my first try (Noah's got creds).
 
 I won't add elm-s3 to the [Elm package repository](http://package.elm-lang.org) until Kevin Tonan adds [elm-aws-generate](https://github.com/ktonon/elm-aws-generate). Until then, elm-aws-generate is a [Git submodule](https://git-scm.com/docs/gitsubmodules) of elm-s3.
+
+In order to clone the submodule, after you clone this repository, you need to do:
+
+    cd .../elm-s3
+    git submodule init
+    git submodule update

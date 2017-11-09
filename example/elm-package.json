@@ -1,11 +1,12 @@
 {
     "version": "1.0.0",
-    "summary": "elm-s3 is an Elm client for the Amazon S3 and Digital Ocean Spaces APIs.",
+    "summary": "elm-s3 examples",
     "repository": "https://github.com/billstclair/elm-s3.git",
     "license": "MIT",
     "source-directories": [
-        "src",
-        "elm-aws-core/src"
+        ".",
+        "../src",
+        "../elm-aws-core/src"
     ],
     "exposed-modules": [],
     "dependencies": {
