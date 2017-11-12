@@ -1,4 +1,4 @@
-The [billstclair/elm-s3](http://package.elm-lang.org/packages/billstclair/elm-s3/latest) package (link does not yet exist) provides an Elm client for the [Amazon S3](https://aws.amazon.com/s3/) and [DigitalOcean Spaces](https://developers.digitalocean.com/documentation/spaces/) object storage systems. It currently targets a subset of the DigitalOcean subset of the Amazon S3 API.
+The [billstclair/elm-s3](http://package.elm-lang.org/packages/billstclair/elm-s3/latest) package (link does not yet exist) provides a pure-Elm client for the [Amazon S3](https://aws.amazon.com/s3/) and [DigitalOcean Spaces](https://developers.digitalocean.com/documentation/spaces/) object storage systems. It currently targets a subset of the DigitalOcean subset of the Amazon S3 API.
 
 The `example` directory has some sample code, with a simple user interface.
 
