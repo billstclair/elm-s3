@@ -14,9 +14,10 @@ module S3Example exposing (..)
 import S3 exposing ( readCredentials )
 
 import AWS.Core.Credentials exposing ( Credentials )
-import AWS.Core.Service exposing ( Service, defineGlobal )
+import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
 import AWS.Core.Http exposing ( Method(..), Response
                               , responseData, emptyBody
+                              , request, send
                               )
 
 import Html exposing ( Html, Attribute
@@ -26,6 +27,7 @@ import Html exposing ( Html, Attribute
 import Html.Attributes exposing ( href, type_, size, value, disabled, style )
 import Html.Events exposing ( onClick, onInput )
 import Http
+import Json.Decode as JD
 import Task
 import Char
 import Debug exposing ( log )
@@ -40,29 +42,88 @@ main =
 
 type alias Model =
     { credentials : Maybe Credentials
-    , service : Maybe Service
+    , service : Service
     , display : String
     }
 
 type Msg
-    = ReceiveCredentials (Result Http.Error (Maybe Credentials))
+    = ListBuckets
+    | ReceiveListBuckets (Result Http.Error String)
+    | ReceiveCredentials (Result Http.Error (Maybe Credentials))
+
+endpointPrefix : String
+endpointPrefix =
+    "s3"
+
+apiVersion : ApiVersion
+apiVersion =
+    "2017-07-10"
+
+protocol : Protocol
+protocol =
+    Service.restXml
+
+digitalOceanHostBase : String
+digitalOceanHostBase =
+    "digitaloceanspaces.com"
+
+digitalOceanRegion : String
+digitalOceanRegion =
+    "nyc3"
+
+makeService : String -> Maybe String -> Service
+makeService region hostBase =
+    let s3 = Service.defineRegional endpointPrefix apiVersion protocol Service.signV4
+        host = case hostBase of
+                   Nothing ->
+                       Nothing
+                   Just base ->
+                       Just <| region ++ "." ++ base
+    in
+        s3 (Service.setHost host) region
 
 init : (Model, Cmd Msg)
 init =
     ( { credentials = Nothing
-      , service = Nothing
+      , service = makeService digitalOceanRegion (Just digitalOceanHostBase)
       , display = "Fetching credentials..."
       }
     , Task.attempt ReceiveCredentials (readCredentials Nothing)
     )
 
+listBuckets : Model -> Cmd Msg
+listBuckets model =
+    case model.credentials of
+        Just credentials ->
+            let req = log "req" <|
+                      request GET "/" [] emptyBody JD.string
+                task = send model.service credentials req
+            in
+                Task.attempt ReceiveListBuckets task
+        _ ->
+            Cmd.none
+
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
+        ListBuckets ->
+            ( model
+            , listBuckets model
+            )
+        ReceiveListBuckets result ->
+            case result of
+                Err err ->
+                    ( { model | display = toString err }
+                    , Cmd.none
+                    )
+                Ok res ->
+                    ( { model | display = res }
+                    , Cmd.none
+                    )
         ReceiveCredentials result ->
             case result of
                 Err err ->
-                    ({ model | display = toString err }
+                    ( { model | display = toString err }
                     , Cmd.none
                     )
                 Ok credentials ->
@@ -78,4 +139,7 @@ view : Model -> Html Msg
 view model =
     div []
         [ p [] [ text model.display ]
+        , p [] [ button [ onClick ListBuckets ]
+                     [ text "List Buckets" ]
+               ]
         ]
