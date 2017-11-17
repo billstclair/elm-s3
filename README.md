@@ -18,9 +18,9 @@ I won't add elm-s3 to the [Elm package repository](http://package.elm-lang.org) 
 
 In order to clone the submodule, after you clone this repository, you need to do:
 
-        cd .../elm-s3
-        git submodule init
-        git submodule update
+    cd .../elm-s3
+    git submodule init
+    git submodule update
 
 # Cross-Origin Resource Sharing (CORS)
 
@@ -28,6 +28,6 @@ It's very easy to get CORS errors when doing S3 requests from a web browser. You
 
 [cors.xml](cors.xml) is an example of XML to send as the body in an [s3cmd](http://s3tools.org/s3cmd) "setcors" command:
 
-        s3cmd setcors cors.xml s3://BUCKET
+    s3cmd setcors cors.xml s3://BUCKET
     
 For Amazon S3, you can use the AWS Management Console to set the CORS properties. For Digital Ocean Spaces, you need to do it with an SDK or s3cmd. The Amazon S3 CORS documentation is [here](http://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html).
