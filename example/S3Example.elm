@@ -44,11 +44,13 @@ type alias Model =
     { credentials : Maybe Credentials
     , service : Service
     , display : String
+    , bucket : String
     }
 
 type Msg
-    = ListBuckets
-    | ReceiveListBuckets (Result Http.Error String)
+    = SetBucket String
+    | ListBucket
+    | ReceiveListBucket (Result Http.Error String)
     | ReceiveCredentials (Result Http.Error (Maybe Credentials))
 
 endpointPrefix : String
@@ -87,30 +89,39 @@ init =
     ( { credentials = Nothing
       , service = makeService digitalOceanRegion (Just digitalOceanHostBase)
       , display = "Fetching credentials..."
+      , bucket = "etwof"
       }
     , Task.attempt ReceiveCredentials (readCredentials Nothing)
     )
 
-listBuckets : Model -> Cmd Msg
-listBuckets model =
+listBucket : Model -> Cmd Msg
+listBucket model =
     case model.credentials of
         Just credentials ->
             let req = log "req" <|
                       request GET "/" [] emptyBody JD.string
-                task = send model.service credentials req
+                host = Service.host model.service
+                service = Service.setHost 
+                          (Just <| model.bucket ++ "." ++ host)
+                          model.service
+                task = send service credentials req
             in
-                Task.attempt ReceiveListBuckets task
+                Task.attempt ReceiveListBucket task
         _ ->
             Cmd.none
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
-        ListBuckets ->
-            ( model
-            , listBuckets model
+        SetBucket bucket ->
+            ( { model | bucket = bucket }
+            , Cmd.none
             )
-        ReceiveListBuckets result ->
+        ListBucket ->
+            ( model
+            , listBucket model
+            )
+        ReceiveListBucket result ->
             case result of
                 Err err ->
                     ( { model | display = toString err }
@@ -139,7 +150,13 @@ view : Model -> Html Msg
 view model =
     div []
         [ p [] [ text model.display ]
-        , p [] [ button [ onClick ListBuckets ]
-                     [ text "List Buckets" ]
+        , p [] [ input [ type_ "text"
+                       , value model.bucket
+                       , onInput SetBucket
+                       ]
+                     []
+               , text " "
+               , button [ onClick ListBucket ]
+                   [ text "List Bucket" ]
                ]
         ]
