@@ -11,7 +11,7 @@
 
 module S3Example exposing (..)
 
-import S3 exposing ( readCredentials )
+import S3 exposing ( S3Account, readS3Accounts, makeCredentials )
 
 import AWS.Core.Credentials exposing ( Credentials )
 import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
@@ -41,7 +41,7 @@ main =
         }
 
 type alias Model =
-    { credentials : Maybe Credentials
+    { accounts : List S3Account
     , service : Service
     , display : String
     , bucket : String
@@ -51,7 +51,7 @@ type Msg
     = SetBucket String
     | ListBucket
     | ReceiveListBucket (Result Http.Error String)
-    | ReceiveCredentials (Result Http.Error (Maybe Credentials))
+    | ReceiveAccounts (Result Http.Error (Result String (List S3Account)))
 
 endpointPrefix : String
 endpointPrefix =
@@ -65,41 +65,33 @@ protocol : Protocol
 protocol =
     Service.restXml
 
-digitalOceanHostBase : String
-digitalOceanHostBase =
-    "digitaloceanspaces.com"
-
 digitalOceanRegion : String
 digitalOceanRegion =
     "nyc3"
 
-makeService : String -> Maybe String -> Service
-makeService region hostBase =
+makeService : String -> Service
+makeService region =
     let s3 = Service.defineRegional endpointPrefix apiVersion protocol Service.signV4
-        host = case hostBase of
-                   Nothing ->
-                       Nothing
-                   Just base ->
-                       Just <| region ++ "." ++ base
     in
         s3 (Service.setIsDigitalOcean True) region
 
 init : (Model, Cmd Msg)
 init =
-    ( { credentials = Nothing
-      , service = makeService digitalOceanRegion (Just digitalOceanHostBase)
-      , display = "Fetching credentials..."
+    ( { accounts = []
+      , service = makeService digitalOceanRegion
+      , display = "Fetching accounts..."
       , bucket = "etwof"
       }
-    , Task.attempt ReceiveCredentials (readCredentials Nothing)
+    , Task.attempt ReceiveAccounts (readS3Accounts Nothing)
     )
 
 listBucket : Model -> Cmd Msg
 listBucket model =
-    case model.credentials of
-        Just credentials ->
+    case model.accounts of
+        account :: _ ->
             let req = request GET ("/" ++ model.bucket ++ "/") [] emptyBody JD.string
                 host = Service.host model.service
+                credentials = makeCredentials account
                 task = send model.service credentials req
             in
                 Task.attempt ReceiveListBucket task
@@ -132,20 +124,24 @@ update msg model =
                     ( { model | display = res }
                     , Cmd.none
                     )
-        ReceiveCredentials result ->
+        ReceiveAccounts result ->
             case result of
                 Err err ->
                     ( { model | display = toString err }
                     , Cmd.none
                     )
-                Ok credentials ->
-                    ( { model | credentials = credentials
-                      , display = case credentials of
-                                      Just _ -> "Credentials received."
-                                      Nothing -> "Malformed credentials!"
-                      }
-                    , Cmd.none
-                    )
+                Ok decoded ->
+                    case decoded of
+                        Err msg ->
+                            ( { model | display = msg }
+                            , Cmd.none
+                            )
+                        Ok accounts ->
+                            ( { model | accounts = accounts
+                              , display = "Accounts received."
+                              }
+                            , Cmd.none
+                            )
 
 processReceiveBucket : String -> Model -> (Model, Cmd Msg)
 processReceiveBucket xml model =
