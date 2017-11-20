@@ -82,7 +82,7 @@ makeService region hostBase =
                    Just base ->
                        Just <| region ++ "." ++ base
     in
-        s3 (Service.setHost host) region
+        s3 (Service.setIsDigitalOcean True) region
 
 init : (Model, Cmd Msg)
 init =
@@ -98,13 +98,9 @@ listBucket : Model -> Cmd Msg
 listBucket model =
     case model.credentials of
         Just credentials ->
-            let req = log "req" <|
-                      request GET "/" [] emptyBody JD.string
+            let req = request GET ("/" ++ model.bucket ++ "/") [] emptyBody JD.string
                 host = Service.host model.service
-                service = Service.setHost 
-                          (Just <| model.bucket ++ "." ++ host)
-                          model.service
-                task = send service credentials req
+                task = send model.service credentials req
             in
                 Task.attempt ReceiveListBucket task
         _ ->
