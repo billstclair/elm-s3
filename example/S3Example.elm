@@ -120,10 +120,15 @@ update msg model =
         ReceiveListBucket result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
-                    , Cmd.none
-                    )
+                    case err of
+                        Http.BadPayload _ response ->
+                            processReceiveBucket response.body model
+                        _ ->
+                            ( { model | display = toString err }
+                            , Cmd.none
+                            )
                 Ok res ->
+                    -- This won't happen, since the JSON string decoder will fail
                     ( { model | display = res }
                     , Cmd.none
                     )
@@ -141,6 +146,12 @@ update msg model =
                       }
                     , Cmd.none
                     )
+
+processReceiveBucket : String -> Model -> (Model, Cmd Msg)
+processReceiveBucket xml model =
+    ( { model | display = xml }
+      , Cmd.none
+    )
 
 view : Model -> Html Msg
 view model =
