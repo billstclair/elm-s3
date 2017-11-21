@@ -36,14 +36,6 @@ makeCredentials : S3Account -> Credentials
 makeCredentials account =
     fromAccessKeys account.accessKey account.secretKey
 
-nothingToFalse : Maybe Bool -> Decoder Bool
-nothingToFalse value =
-    case value of
-        Nothing ->
-            JD.succeed False
-        Just res ->
-            JD.succeed res
-
 s3AccountDecoder : Decoder S3Account
 s3AccountDecoder =
     JD.map6 S3Account
