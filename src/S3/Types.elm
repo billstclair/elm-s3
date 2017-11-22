@@ -10,7 +10,7 @@
 ----------------------------------------------------------------------
 
 module S3.Types exposing ( Error(..), Account
-                         , StorageClass(..), ObjectOwner, Bucket, BucketList
+                         , StorageClass, Bucket, BucketList
                          )
 
 import Http
@@ -29,13 +29,8 @@ type alias Account =
     , buckets : List String
     }
 
-type StorageClass
-    = StandardClass
-
-type alias ObjectOwner =
-    { id : String
-    , displayName : String
-    }
+type alias StorageClass =
+    String
 
 type alias Bucket =
     { key : String
@@ -43,7 +38,7 @@ type alias Bucket =
     , eTag : String
     , size: Int
     , storageClass : StorageClass
-    , owner : ObjectOwner
+    , owner : String
     }
 
 type alias BucketList =

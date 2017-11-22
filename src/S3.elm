@@ -14,8 +14,11 @@ module S3 exposing ( readAccounts, decodeAccounts, makeCredentials
                    )
 
 import S3.Types exposing ( Error(..), Account
-                         , StorageClass(..), ObjectOwner, Bucket, BucketList
+                         , StorageClass, Bucket, BucketList
                          )
+
+import S3.Parser exposing ( parseListBucketResponse
+                          )
 
 import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
 import AWS.Core.Credentials exposing ( Credentials
@@ -41,8 +44,8 @@ readAccounts maybeUrl =
         request = Http.getString url
         getTask = Http.toTask request
     in
-        Task.onError handleHttpError getTask
-            |> Task.andThen decodeAccountsTask
+        Task.andThen decodeAccountsTask
+            <| Task.onError handleHttpError getTask
 
 decodeAccountsTask : String -> Task Error (List Account)
 decodeAccountsTask json =
@@ -126,14 +129,14 @@ listBucket account bucket =
     let req = request GET ("/" ++ bucket ++ "/") [] emptyBody JD.string
         task = send account req
     in
-        Task.onError handleBadPayload task
-            |> Task.andThen parseListBucketResponseTask
+        Task.andThen parseListBucketResponseTask
+            <| Task.onError handleBadPayload task
 
 parseListBucketResponseTask : String -> Task Error BucketList
 parseListBucketResponseTask xml =
     case parseListBucketResponse xml of
         Err err ->
-            Task.fail <| ParseError err
+            Task.fail err
         Ok buckets ->
             Task.succeed buckets
 
@@ -145,15 +148,10 @@ handleBadPayload error =
         _ ->
             Task.fail <| HttpError error
 
-parseListBucketResponse : String -> Result String BucketList
-parseListBucketResponse xml =
-    -- Need to parse the XML into a list of Buckets.
-    Err xml
-
 getObject : Account -> String -> String -> Task Error String
 getObject account bucket key =
     let req = request GET ("/" ++ bucket ++ "/" ++ key)
               [] emptyBody JD.string        
     in
-        Task.onError handleBadPayload
-            <| send account req
+        send account req
+            |> Task.onError handleBadPayload
