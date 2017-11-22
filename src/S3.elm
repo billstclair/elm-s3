@@ -1,34 +1,39 @@
-module S3 exposing ( Account, StorageClass(..), ObjectOwner, Bucket
-                   , readAccounts, decodeAccounts, makeCredentials
+----------------------------------------------------------------------
+--
+-- S3.elm
+-- Elm client library for Amazon's S3 (Simple Storage Service)
+-- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
+-- Some rights reserved.
+-- Distributed under the MIT License
+-- See LICENSE.txt
+--
+----------------------------------------------------------------------
+
+module S3 exposing ( readAccounts, decodeAccounts, makeCredentials
                    , listBucket, getObject
                    )
+
+import S3.Types exposing ( Error(..), Account
+                         , StorageClass(..), ObjectOwner, Bucket, BucketList
+                         )
 
 import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
 import AWS.Core.Credentials exposing ( Credentials
                                      , fromAccessKeys )
-import AWS.Core.Http exposing ( Method(..), Response
+import AWS.Core.Http exposing ( Method(..), Request, Response
                               , responseData, emptyBody
-                              , request, send
+                              , request
                               )
 
 import Http
 import Task exposing ( Task )
 import Json.Decode as JD exposing ( Decoder )
 
-type alias Account =
-    { name : String
-    , region : Maybe String
-    , isDigitalOcean : Bool
-    , accessKey : String
-    , secretKey : String
-    , buckets : List String
-    }
-
 defaultAccountsUrl : String
 defaultAccountsUrl =
     "accounts.json"
 
-readAccounts : Maybe String -> Task Http.Error (Result String (List Account))
+readAccounts : Maybe String -> Task Error (List Account)
 readAccounts maybeUrl =
     let url = case maybeUrl of
                   Just u -> u
@@ -36,7 +41,20 @@ readAccounts maybeUrl =
         request = Http.getString url
         getTask = Http.toTask request
     in
-        Task.map decodeAccounts getTask
+        Task.onError handleHttpError getTask
+            |> Task.andThen decodeAccountsTask
+
+decodeAccountsTask : String -> Task Error (List Account)
+decodeAccountsTask json =
+    case decodeAccounts json of
+        Ok accounts ->
+            Task.succeed accounts
+        Err error ->
+            Task.fail error
+
+handleHttpError : Http.Error -> Task Error String
+handleHttpError error =
+    Task.fail <| HttpError error
 
 makeCredentials : Account -> Credentials
 makeCredentials account =
@@ -64,9 +82,13 @@ accountsDecoder : Decoder (List Account)
 accountsDecoder =
     JD.list accountDecoder
 
-decodeAccounts : String -> Result String (List Account)
+decodeAccounts : String -> Result Error (List Account)
 decodeAccounts json =
-    JD.decodeString accountsDecoder json
+    case JD.decodeString accountsDecoder json of
+        Err s ->
+            Err <| ParseError s
+        Ok accounts ->
+            Ok accounts
 
 endpointPrefix : String
 endpointPrefix =
@@ -92,51 +114,46 @@ makeService account =
                 Service.defineRegional
                     endpointPrefix apiVersion protocol Service.signV4 sdo region
 
-type StorageClass
-    = StandardClass
-
-type alias ObjectOwner =
-    { id : String
-    , displayName : String
-    }
-
-type alias Bucket =
-    { key : String
-    , lastModified : String
-    , eTag : String
-    , size: Int
-    , storageClass : StorageClass
-    , owner : ObjectOwner
-    }
-
-listBucket : Account -> String -> Task Http.Error (Result String (List Bucket))
-listBucket account bucket =
+send : Account -> Request a -> Task Http.Error a
+send account req =
     let service = makeService account
-        req = request GET ("/" ++ bucket ++ "/") [] emptyBody JD.string
         credentials = makeCredentials account
-        task = send service credentials req
     in
-        Task.map parseListBucketResponse
-            <| Task.onError handleBadPayload task
+        AWS.Core.Http.send service credentials req
 
-handleBadPayload : Http.Error -> Task Http.Error String
+listBucket : Account -> String -> Task Error BucketList
+listBucket account bucket =
+    let req = request GET ("/" ++ bucket ++ "/") [] emptyBody JD.string
+        task = send account req
+    in
+        Task.onError handleBadPayload task
+            |> Task.andThen parseListBucketResponseTask
+
+parseListBucketResponseTask : String -> Task Error BucketList
+parseListBucketResponseTask xml =
+    case parseListBucketResponse xml of
+        Err err ->
+            Task.fail <| ParseError err
+        Ok buckets ->
+            Task.succeed buckets
+
+handleBadPayload : Http.Error -> Task Error String
 handleBadPayload error =
     case error of
         Http.BadPayload _ response ->
             Task.succeed response.body
         _ ->
-            Task.fail error
+            Task.fail <| HttpError error
 
-parseListBucketResponse : String -> Result String (List Bucket)
+parseListBucketResponse : String -> Result String BucketList
 parseListBucketResponse xml =
+    -- Need to parse the XML into a list of Buckets.
     Err xml
 
-getObject : Account -> String -> String -> Task Http.Error String
+getObject : Account -> String -> String -> Task Error String
 getObject account bucket key =
-    let service = makeService account
-        req = request GET ("/" ++ bucket ++ "/" ++ key)
-              [] emptyBody JD.string
-        credentials = makeCredentials account
+    let req = request GET ("/" ++ bucket ++ "/" ++ key)
+              [] emptyBody JD.string        
     in
-        send service credentials req
-    
+        Task.onError handleBadPayload
+            <| send account req

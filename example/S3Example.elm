@@ -11,15 +11,8 @@
 
 module S3Example exposing (..)
 
-import S3 exposing ( Account, Bucket
-                   , readAccounts, makeCredentials )
-
-import AWS.Core.Credentials exposing ( Credentials )
-import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
-import AWS.Core.Http exposing ( Method(..), Response
-                              , responseData, emptyBody
-                              , request, send
-                              )
+import S3 exposing ( readAccounts, makeCredentials )
+import S3.Types exposing ( Error(..), Account, Bucket, BucketList )
 
 import Html exposing ( Html, Attribute
                      , div, text, p, h2, table, tr, th, td, a, br
@@ -55,11 +48,11 @@ type alias Model =
 
 type Msg
     = SetAccount String
-    | ReceiveAccounts (Result Http.Error (Result String (List Account)))
-    | ReceiveRawRequest (Result Http.Error String)
+    | ReceiveAccounts (Result Error (List Account))
+    | ReceiveGetObject (Result Error String)
     | SetBucket String
     | ListBucket
-    | ReceiveListBucket (Result Http.Error (Result String (List Bucket)))
+    | ReceiveListBucket (Result Error BucketList)
     | SetKey String
     | GetObject
 
@@ -84,7 +77,7 @@ getObject : Model -> Cmd Msg
 getObject model =
     let task = S3.getObject model.account model.bucket model.key
     in
-        Task.attempt ReceiveRawRequest task
+        Task.attempt ReceiveGetObject task
 
 defaultAccount : Account
 defaultAccount =
@@ -136,16 +129,10 @@ update msg model =
                     ( { model | display = toString err }
                     , Cmd.none
                     )
-                Ok parseResult ->
-                    case parseResult of
-                        Err msg ->
-                            ( { model | display = msg }
-                            , Cmd.none
-                            )
-                        Ok buckets ->
-                            ( { model | display = toString buckets }
-                            , Cmd.none
-                            )
+                Ok buckets ->
+                    ( { model | display = toString buckets }
+                    , Cmd.none
+                    )
         SetKey key ->
             ( { model | key = key }
             , Cmd.none
@@ -159,53 +146,43 @@ update msg model =
                 ( { model | display = "Fetching " ++ model.key ++ "..." }
                 , getObject model
                 )
-        ReceiveRawRequest result ->
+        ReceiveGetObject result ->
             case result of
                 Err err ->
-                    case err of
-                        Http.BadPayload _ response ->
-                            processReceiveBucket response.body model
-                        _ ->
-                            ( { model | display = toString err }
-                            , Cmd.none
-                            )
+                    ( { model | display = toString err }
+                    , Cmd.none
+                    )
                 Ok res ->
                     -- This won't happen, since the JSON string decoder will fail
                     ( { model | display = res }
                     , Cmd.none
                     )
         ReceiveAccounts result ->
-            case log "accounts" result of
+            case result of
                 Err err ->
                     ( { model | display = toString err }
                     , Cmd.none
                     )
-                Ok decoded ->
-                    case decoded of
-                        Err msg ->
-                            ( { model | display = msg }
-                            , Cmd.none
-                            )
-                        Ok accounts ->
-                            let account = case accounts of
-                                              a :: _ ->
-                                                  a
-                                              _ ->
-                                                  defaultAccount
-                            in
-                              ( { model
-                                    | accounts = accounts
-                                    , account = account
-                                    , bucket = case account.buckets of
-                                                   b :: _ ->
-                                                       b
-                                                   _ ->
-                                                       "No bucket"
-                                    , display = "Accounts received."
-                                }
-                              , Cmd.none
-                              )
-
+                Ok accounts ->
+                    let account = case accounts of
+                                      a :: _ ->
+                                          a
+                                      _ ->
+                                          defaultAccount
+                    in
+                        ( { model
+                              | accounts = accounts
+                              , account = account
+                              , bucket = case account.buckets of
+                                             b :: _ ->
+                                                 b
+                                             _ ->
+                                                 "No bucket"
+                              , display = "Accounts received."
+                          }
+                        , Cmd.none
+                        )
+                        
 processReceiveBucket : String -> Model -> (Model, Cmd Msg)
 processReceiveBucket xml model =
     ( { model | display = xml }
