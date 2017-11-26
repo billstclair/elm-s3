@@ -63,6 +63,13 @@ makeCredentials : Account -> Credentials
 makeCredentials account =
     fromAccessKeys account.accessKey account.secretKey
 
+serviceGetters : Bool -> Service.Getters
+serviceGetters isDigitalOcean =
+    if isDigitalOcean then
+        Service.digitalOceanGetters
+    else
+        Service.s3Getters
+
 accountDecoder : Decoder Account
 accountDecoder =
     JD.map6 Account
@@ -72,14 +79,15 @@ accountDecoder =
              , JD.succeed Nothing
              ]
         )
-        (JD.oneOf
+        (JD.field "access-key" JD.string)
+        (JD.field "secret-key" JD.string)
+        (JD.field "buckets" (JD.list JD.string))
+        (JD.map serviceGetters
+             <| JD.oneOf
              [ JD.field "is-digital-ocean" JD.bool
              , JD.succeed False
              ]
         )
-        (JD.field "access-key" JD.string)
-        (JD.field "secret-key" JD.string)
-        (JD.field "buckets" (JD.list JD.string))
 
 accountsDecoder : Decoder (List Account)
 accountsDecoder =
@@ -107,7 +115,7 @@ protocol =
 
 makeService : Account -> Service
 makeService account =
-    let sdo = Service.setIsDigitalOcean account.isDigitalOcean
+    let sdo = Service.setGetters account.serviceGetters
     in
         case account.region of
             Nothing ->

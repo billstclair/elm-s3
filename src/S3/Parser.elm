@@ -16,14 +16,18 @@ import S3.Types exposing ( Error(..)
                          , StorageClass, Bucket, BucketList
                          )
 
+import Xml.SimpleXmlToJson exposing ( xmlToJson )
+
 import Xml exposing ( Value(..) )
 import Xml.Decode as XD
 import Xml.Query as XQ
+import Json.Decode as JD
+import Json.Encode as JE
 
 parseListBucketResponse : String -> Result Error BucketList
 parseListBucketResponse xml =
     -- Need to parse the XML into a list of Buckets.
-    case XD.decodeChildren xml of
+    case XD.decode xml of
         Err msg ->
             Err <| MalformedXmlError msg
         Ok value ->

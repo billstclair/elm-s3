@@ -14,6 +14,8 @@ module S3Example exposing (..)
 import S3 exposing ( readAccounts, makeCredentials )
 import S3.Types exposing ( Error(..), Account, Bucket, BucketList )
 
+import AWS.Core.Service as Service
+
 import Html exposing ( Html, Attribute
                      , div, text, p, h2, table, tr, th, td, a, br
                      , input, button
@@ -83,10 +85,10 @@ defaultAccount : Account
 defaultAccount =
     { name = "No account"
     , region = Nothing
-    , isDigitalOcean = False
     , accessKey = ""
     , secretKey = ""
     , buckets = [ "No bucket" ]
+    , serviceGetters = Service.s3Getters
     }
 
 findAccount : Model -> String -> Account

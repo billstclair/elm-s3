@@ -13,6 +13,8 @@ module S3.Types exposing ( Error(..), Account
                          , StorageClass, Bucket, BucketList
                          )
 
+import AWS.Core.Service as Service
+
 import Http
 
 type Error
@@ -23,10 +25,10 @@ type Error
 type alias Account =
     { name : String
     , region : Maybe String
-    , isDigitalOcean : Bool
     , accessKey : String
     , secretKey : String
     , buckets : List String
+    , serviceGetters : Service.Getters
     }
 
 type alias StorageClass =
