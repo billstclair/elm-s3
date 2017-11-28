@@ -97,7 +97,7 @@ decodeAccounts : String -> Result Error (List Account)
 decodeAccounts json =
     case JD.decodeString accountsDecoder json of
         Err s ->
-            Err <| ParseError s
+            Err <| DecodeError s
         Ok accounts ->
             Ok accounts
 

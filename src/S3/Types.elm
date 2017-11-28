@@ -10,8 +10,10 @@
 ----------------------------------------------------------------------
 
 module S3.Types exposing ( Error(..), Account
-                         , StorageClass, Bucket, BucketList
+                         , StorageClass, Owner, Bucket, BucketList
                          )
+
+import Xml.Extra exposing ( DecodeDetails )
 
 import AWS.Core.Service as Service
 
@@ -20,7 +22,8 @@ import Http
 type Error
     = HttpError Http.Error
     | MalformedXmlError String
-    | ParseError String
+    | DecodeError String
+    | ParseError DecodeDetails
 
 type alias Account =
     { name : String
@@ -34,13 +37,18 @@ type alias Account =
 type alias StorageClass =
     String
 
+type alias Owner =
+    { id : String
+    , displayName : String
+    }
+          
 type alias Bucket =
     { key : String
     , lastModified : String
     , eTag : String
     , size: Int
     , storageClass : StorageClass
-    , owner : String
+    , owner : Owner
     }
 
 type alias BucketList =

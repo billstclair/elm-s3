@@ -12,148 +12,124 @@
 module S3.Parser exposing ( parseListBucketResponse
                           )
 
-import S3.Types exposing ( Error(..)
-                         , StorageClass, Bucket, BucketList
+import S3.Types exposing ( Error ( MalformedXmlError, ParseError )
+                         , StorageClass, Owner, Bucket, BucketList
                          )
 
-import Xml.SimpleXmlToJson exposing ( xmlToJson )
+import Xml.Extra exposing ( TagSpec, Required ( Required, Optional, Multiple )
+                          , decodeXml, requiredTag, optionalTag, multipleTag
+                          )
 
 import Xml exposing ( Value(..) )
 import Xml.Decode as XD
 import Xml.Query as XQ
-import Json.Decode as JD
-import Json.Encode as JE
+
+import Json.Decode as JD exposing ( Decoder )
+
+makeError : Xml.Extra.Error -> Error
+makeError error =
+    case error of
+        Xml.Extra.XmlError msg ->
+            MalformedXmlError msg
+        Xml.Extra.DecodeError details ->
+            ParseError details
 
 parseListBucketResponse : String -> Result Error BucketList
 parseListBucketResponse xml =
-    -- Need to parse the XML into a list of Buckets.
-    case XD.decode xml of
-        Err msg ->
-            Err <| MalformedXmlError msg
-        Ok value ->
-            case value of
-                Object vals ->
-                    case parseBucketList vals of
-                        Ok buckets -> Ok buckets
-                        Err msg -> Err <| ParseError msg
-                _ ->
-                    Err  <| ParseError "Top-level element is not an Object"
-                            
-getOne : (Value -> Result String a) -> List Value -> String -> Result String a
-getOne converter values err =
-    case XQ.collect converter values of
-        res :: _ ->
+    case decodeXml xml "ListBucketResult" listBucketDecoder listBucketTagSpecs of
+        Err err ->
+            Err <| makeError err
+        Ok res ->
             Ok res
-        _ ->
-            Err err
 
-getZeroOrOne : (Value -> Result String a) -> List Value -> Maybe a
-getZeroOrOne converter values =
-    case XQ.collect converter values of
-        res :: _ ->
-            Just res
-        _ ->
-            Nothing
+intOrString : Decoder String
+intOrString =
+    JD.oneOf
+        [ JD.string
+        , JD.int |> JD.andThen (\int -> JD.succeed (toString int))
+        ]
 
-parseBucketList : List Value -> Result String BucketList
-parseBucketList vals =
-    case getOne (XQ.tag "ListBucketResult" Ok) vals "Missing ListBucketResult" of
-        Err msg ->
-            Err msg
-        Ok value ->
-            case value of
-                Object innerVals ->
-                    parseInnerBucketList innerVals
-                _ ->
-                    Err "ListBucketResult is not an Object."
+ownerDecoder : Decoder Owner
+ownerDecoder =
+    JD.map2 Owner
+        (JD.field "ID" intOrString)
+        (JD.field "DisplayName" intOrString)
 
-parseInnerBucketList : List Value -> Result String BucketList
-parseInnerBucketList vals =
-    let prefix = getZeroOrOne (XQ.tag "Prefix" XQ.string) vals
-        marker = getZeroOrOne (XQ.tag "Marker" XQ.string) vals
-        nextMarker = getZeroOrOne (XQ.tag "NextMarker" XQ.string) vals
-        isTruncated = case getZeroOrOne (XQ.tag "IsTruncated" XQ.bool) vals of
-                          Just val -> val
-                          Nothing -> False
-    in
-        case getOne (XQ.tag "Name" XQ.string) vals "Missing Name" of
-            Err msg -> Err msg
-            Ok name ->
-                case getOne (XQ.tag "MaxKeys" XQ.int) vals "Missing MaxKeys" of
-                    Err msg -> Err msg
-                    Ok maxKeys ->
-                        case parseBuckets vals of
-                            Err msg -> Err msg
-                            Ok buckets ->
-                                Ok { name = name
-                                   , prefix = prefix
-                                   , marker = marker
-                                   , nextMarker = nextMarker
-                                   , maxKeys = maxKeys
-                                   , isTruncated = isTruncated
-                                   , buckets = buckets
-                                   }
-                                    
-convertEach : (Value -> Result String a) -> (List Value) -> Result String (List a)
-convertEach converter values =
-    let loop = (\values res ->
-                    case values of
-                        [] ->
-                            Ok <| List.reverse res
-                        val :: tail ->
-                            case converter val of
-                                Err msg ->
-                                    Err msg
-                                Ok a ->
-                                    loop tail (a :: res)
-               )
-    in
-        loop values []
+ownerTagSpecs : List TagSpec
+ownerTagSpecs =
+    [ ("ID", Required)
+    , ("DisplayName", Required)
+    ]
 
-parseBuckets : List Value -> Result String (List Bucket)
-parseBuckets values =
-    let bucketValues = XQ.collect (XQ.tag "Contents" Ok) values
-        count = Debug.log "count" <| List.length bucketValues
-    in
-        convertEach parseBucket bucketValues
+defaultOwner : Owner
+defaultOwner =
+    { id = "nothing"
+    , displayName = "nobody"
+    }
 
-parseBucket : Value -> Result String Bucket
-parseBucket value =
-    case value of
-        Object vals ->
-            case ( getOne (XQ.tag "Key" XQ.string) vals "Missing Key"
-                 , getOne (XQ.tag "LastModified" XQ.string) vals "Missing LastModified"
-                 , getOne (XQ.tag "ETag" XQ.string) vals "Missing ETag"
-                 , getOne (XQ.tag "Size" XQ.int) vals "Missing Size"
-                 , getOne (XQ.tag "StorageClass" XQ.string) vals "Missing StorageClass"
-                 , getOne (XQ.tag "Owner" Ok) vals "Missing Owner"
-                 ) of
-                ( Ok key, Ok lastModified, Ok eTag, Ok size
-                , Ok storageClass, Ok owner) ->
-                  case parseOwner owner of
-                      Err msg ->
-                          Err msg
-                      Ok id ->
-                          Ok { key = key
-                             , lastModified = lastModified
-                             , eTag = eTag
-                             , size = size
-                             , storageClass = storageClass
-                             , owner = id
-                             }
-                _ ->
-                    Err "Bad Bucket element."
-        _ ->
-            Err "Bucket XML not an Object."
+bucketDecoder : Decoder Bucket
+bucketDecoder =
+    JD.map6 Bucket
+        (JD.field "Key" JD.string)
+        (JD.field "LastModified" JD.string)
+        (JD.field "ETag" JD.string)
+        (JD.field "Size" JD.int)
+        (JD.field "StorageClass" JD.string)
+        (requiredTag "Owner" ownerDecoder ownerTagSpecs)
 
-parseOwner : Value -> Result String String
-parseOwner value =
-    case value of
-        Object vals ->
-            case getOne (XQ.tag "DisplayName" XQ.int) vals "Missing ID" of
-                Ok res ->
-                    Ok <| toString res
-                Err _ ->
-                    getOne (XQ.tag "DisplayName" XQ.string) vals "Missing ID"
-        _ ->
-            Err "Owner is not an Object."
+-- DigitalOcean puts Owner after StorageClass
+bucketTagSpecs : List TagSpec
+bucketTagSpecs =
+    [ ("Key", Required)
+    , ("LastModified", Required)
+    , ("ETag", Required)
+    , ("Size", Required)
+    , ("StorageClass", Required)
+    , ("Owner", Required)
+    ]
+
+-- Amazon S3 puts Owner before StorageClass
+amazonBucketTagSpecs : List TagSpec
+amazonBucketTagSpecs =
+    [ ("Key", Required)
+    , ("LastModified", Required)
+    , ("ETag", Required)
+    , ("Size", Required)
+    , ("Owner", Required)
+    , ("StorageClass", Required)
+    ]
+
+boolOrString : Decoder Bool
+boolOrString =
+    JD.oneOf
+        [ JD.bool
+        , JD.string
+            |> JD.andThen
+               (\s -> JD.succeed <| s == "true")
+        ]                    
+
+listBucketDecoder : Decoder BucketList
+listBucketDecoder =
+    JD.map7 BucketList
+        (JD.field "Name" JD.string)
+        (optionalTag "Prefix" JD.string [])
+        (optionalTag "Marker" JD.string [])
+        (optionalTag "NextMarker" JD.string [])
+        (JD.field "MaxKeys" JD.int)
+        (requiredTag "IsTruncated" boolOrString [])
+        (JD.oneOf
+             [ multipleTag "Contents" bucketDecoder bucketTagSpecs
+             , multipleTag "Contents" bucketDecoder amazonBucketTagSpecs
+             ]
+        )
+
+listBucketTagSpecs : List TagSpec
+listBucketTagSpecs =
+    [ ("Name", Required)
+    , ("Prefix", Optional)
+    , ("Marker", Optional)
+    , ("NextMarker", Optional)
+    , ("MaxKeys", Required)
+    , ("IsTruncated", Required)
+    , ("Contents", Multiple)
+    ]
