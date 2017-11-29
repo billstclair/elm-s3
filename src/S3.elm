@@ -10,7 +10,8 @@
 ----------------------------------------------------------------------
 
 module S3 exposing ( readAccounts, decodeAccounts, makeCredentials
-                   , listKeys, getObject
+                   , htmlBody, jsonBody, stringBody
+                   , listKeys, getObject, putObject
                    )
 
 import S3.Types exposing ( Error(..), Account
@@ -24,7 +25,7 @@ import S3.Parser exposing ( parseListBucketResponse
 import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
 import AWS.Core.Credentials exposing ( Credentials
                                      , fromAccessKeys )
-import AWS.Core.Http exposing ( Method(..), Request, Response
+import AWS.Core.Http exposing ( Method(..), Request, Response, Body
                               , responseData, emptyBody
                               , request
                               )
@@ -32,6 +33,7 @@ import AWS.Core.Http exposing ( Method(..), Request, Response
 import Http
 import Task exposing ( Task )
 import Json.Decode as JD exposing ( Decoder )
+import Json.Encode as JE
 
 defaultAccountsUrl : String
 defaultAccountsUrl =
@@ -169,10 +171,38 @@ handleBadPayload error =
         _ ->
             Task.fail <| HttpError error
 
+objectPath : String -> String -> String
+objectPath bucket key =
+    "/" ++ bucket ++ "/" ++ key
+
 getObject : Account -> String -> String -> Task Error String
 getObject account bucket key =
-    let req = request GET ("/" ++ bucket ++ "/" ++ key)
+    let req = request GET (objectPath  bucket key)
               [] emptyBody JD.string        
+    in
+        send account req
+            |> Task.onError handleBadPayload
+
+htmlBody : String -> Body
+htmlBody =
+    AWS.Core.Http.htmlBody
+
+jsonBody : JE.Value -> Body
+jsonBody =
+    AWS.Core.Http.jsonBody
+
+-- stringBody mimetype string
+stringBody : String -> String -> Body
+stringBody =
+    AWS.Core.Http.stringBody
+
+putObject : Account -> String -> String -> Body -> Task Error String
+putObject account bucket key body =
+    let req = request PUT (objectPath bucket key)
+              [("x-amz-acl", "public-read")]
+              body
+              JD.string
+              
     in
         send account req
             |> Task.onError handleBadPayload
