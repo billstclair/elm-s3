@@ -8,9 +8,9 @@ In order to use it, you'll need to get a secret key and access key. You can get 
 
 # Library Usage
 
-Kevin Tonon has already done a lot of the basic work for this in his unreleased [ktonen/elm-aws-core](https://github.com/ktonon/elm-aws-core) package, which I found while looking at the source for [ktonen/elm-crypto](http://package.elm-lang.org/packages/ktonon/elm-crypto/latest) (HMAC and SHA).
+Kevin Tonon did most of the basic work in his unreleased [ktonen/elm-aws-core](https://github.com/ktonon/elm-aws-core) package, which I found while looking at the source for [ktonen/elm-crypto](http://package.elm-lang.org/packages/ktonon/elm-crypto/latest) (HMAC and SHA).
 
-I haven't decided yet whether to use [crazymykl/ex-em-elm](http://package.elm-lang.org/packages/crazymykl/ex-em-elm/latest) or [eeue56/elm-xml](http://package.elm-lang.org/packages/eeue56/elm-xml/latest), though the latter will be my first try (Noah's got creds).
+I'm using my [billstclair/elm-xml-extra](http://package.elm-lang.org/packages/billstclair/elm-xml-extra/latest) package on top of Noah's [eeue56/elm-xml](http://package.elm-lang.org/packages/eeue56/elm-xml/latest) for XML parsing.
 
 # Git Submodules
 
