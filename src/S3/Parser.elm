@@ -13,7 +13,7 @@ module S3.Parser exposing ( parseListBucketResponse
                           )
 
 import S3.Types exposing ( Error ( MalformedXmlError, ParseError )
-                         , StorageClass, Owner, Bucket, BucketList
+                         , StorageClass, Owner, Key, KeyList
                          )
 
 import Xml.Extra exposing ( TagSpec, Required ( Required, Optional, Multiple )
@@ -34,7 +34,7 @@ makeError error =
         Xml.Extra.DecodeError details ->
             ParseError details
 
-parseListBucketResponse : String -> Result Error BucketList
+parseListBucketResponse : String -> Result Error KeyList
 parseListBucketResponse xml =
     case decodeXml xml "ListBucketResult" listBucketDecoder listBucketTagSpecs of
         Err err ->
@@ -67,9 +67,9 @@ defaultOwner =
     , displayName = "nobody"
     }
 
-bucketDecoder : Decoder Bucket
+bucketDecoder : Decoder Key
 bucketDecoder =
-    JD.map6 Bucket
+    JD.map6 Key
         (JD.field "Key" JD.string)
         (JD.field "LastModified" JD.string)
         (JD.field "ETag" JD.string)
@@ -108,9 +108,9 @@ boolOrString =
                (\s -> JD.succeed <| s == "true")
         ]                    
 
-listBucketDecoder : Decoder BucketList
+listBucketDecoder : Decoder KeyList
 listBucketDecoder =
-    JD.map7 BucketList
+    JD.map7 KeyList
         (JD.field "Name" JD.string)
         (optionalTag "Prefix" JD.string [])
         (optionalTag "Marker" JD.string [])

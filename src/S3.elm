@@ -10,11 +10,12 @@
 ----------------------------------------------------------------------
 
 module S3 exposing ( readAccounts, decodeAccounts, makeCredentials
-                   , listBucket, getObject
+                   , listKeys, getObject
                    )
 
 import S3.Types exposing ( Error(..), Account
-                         , StorageClass, Bucket, BucketList
+                         , StorageClass, Key, KeyList
+                         , Query, QueryElement(..)
                          )
 
 import S3.Parser exposing ( parseListBucketResponse
@@ -132,15 +133,27 @@ send account req =
     in
         AWS.Core.Http.send service credentials req
 
-listBucket : Account -> String -> Task Error BucketList
-listBucket account bucket =
-    let req = request GET ("/" ++ bucket ++ "/") [] emptyBody JD.string
+formatQuery : Query -> AWS.Core.Http.Query
+formatQuery query =
+    let formatElement = (\element ->
+                             case element of
+                                 Delimiter s -> ("delimiter", s)
+                                 Marker s -> ("marker", s)
+                                 MaxKeys cnt -> ("max-keys", toString cnt)
+                                 Prefix s -> ("prefix", s)
+                        )
+    in
+        List.map formatElement query
+
+listKeys : Account -> String -> Query -> Task Error KeyList
+listKeys account bucket query =
+    let req = request GET ("/" ++ bucket ++ "/") (formatQuery query) emptyBody JD.string
         task = send account req
     in
         Task.andThen parseListBucketResponseTask
             <| Task.onError handleBadPayload task
 
-parseListBucketResponseTask : String -> Task Error BucketList
+parseListBucketResponseTask : String -> Task Error KeyList
 parseListBucketResponseTask xml =
     case parseListBucketResponse xml of
         Err err ->

@@ -10,7 +10,8 @@
 ----------------------------------------------------------------------
 
 module S3.Types exposing ( Error(..), Account
-                         , StorageClass, Owner, Bucket, BucketList
+                         , StorageClass, Owner, Key, KeyList
+                         , Query, QueryElement(..)
                          )
 
 import Xml.Extra exposing ( DecodeDetails )
@@ -42,7 +43,7 @@ type alias Owner =
     , displayName : String
     }
           
-type alias Bucket =
+type alias Key =
     { key : String
     , lastModified : String
     , eTag : String
@@ -51,14 +52,21 @@ type alias Bucket =
     , owner : Owner
     }
 
-type alias BucketList =
+type alias KeyList =
     { name : String
     , prefix : Maybe String
     , marker : Maybe String
     , nextMarker : Maybe String
     , maxKeys : Int
     , isTruncated : Bool
-    , buckets : List Bucket
+    , keys : List Key
     }
 
+type QueryElement
+    = Delimiter String
+    | Marker String
+    | MaxKeys Int
+    | Prefix String
 
+type alias Query =
+    List QueryElement

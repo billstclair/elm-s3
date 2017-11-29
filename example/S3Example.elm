@@ -12,7 +12,9 @@
 module S3Example exposing (..)
 
 import S3 exposing ( readAccounts, makeCredentials )
-import S3.Types exposing ( Error(..), Account, Bucket, BucketList )
+import S3.Types exposing ( Error(..), Account, Key, KeyList
+                         , QueryElement(..)
+                         )
 
 import AWS.Core.Service as Service
 
@@ -20,9 +22,10 @@ import Html exposing ( Html, Attribute
                      , div, text, p, h2, table, tr, th, td, a, br
                      , input, button
                      , select, option
+                     , textarea
                      )
 import Html.Attributes exposing ( href, type_, size, value, disabled, style
-                                , selected
+                                , selected, cols, rows
                                 )
 import Html.Events exposing ( onClick, onInput, on, targetValue )
 import Http
@@ -30,6 +33,7 @@ import Json.Decode as JD
 import Task
 import Char
 import List.Extra as LE
+import Task
 import Debug exposing ( log )
 
 main =
@@ -46,6 +50,8 @@ type alias Model =
     , account : Account
     , bucket : String
     , key : String
+    , keyList : Maybe KeyList
+    , text : String
     }
 
 type Msg
@@ -54,9 +60,10 @@ type Msg
     | ReceiveGetObject (Result Error String)
     | SetBucket String
     | ListBucket
-    | ReceiveListBucket (Result Error BucketList)
+    | ReceiveListBucket (Result Error KeyList)
     | SetKey String
     | GetObject
+    | GetKey String
 
 init : (Model, Cmd Msg)
 init =
@@ -65,13 +72,15 @@ init =
       , account = defaultAccount
       , bucket = "No bucket"
       , key = ""
+      , keyList = Nothing
+      , text = ""
       }
     , Task.attempt ReceiveAccounts (readAccounts Nothing)
     )
 
 listBucket : Model -> Cmd Msg
 listBucket model =
-    let task = S3.listBucket model.account model.bucket
+    let task = S3.listKeys model.account model.bucket [ MaxKeys 100 ]
     in
         Task.attempt ReceiveListBucket task
 
@@ -131,8 +140,8 @@ update msg model =
                     ( { model | display = toString err }
                     , Cmd.none
                     )
-                Ok buckets ->
-                    ( { model | display = toString buckets }
+                Ok keys ->
+                    ( { model | keyList = Just keys }
                     , Cmd.none
                     )
         SetKey key ->
@@ -155,10 +164,16 @@ update msg model =
                     , Cmd.none
                     )
                 Ok res ->
-                    -- This won't happen, since the JSON string decoder will fail
-                    ( { model | display = res }
+                    ( { model
+                          | display = "Got " ++ model.key
+                          , text = res
+                      }
                     , Cmd.none
                     )
+        GetKey key ->
+            ( { model | key = key }
+            , Task.perform (\_ -> GetObject) <| Task.succeed ()
+            )
         ReceiveAccounts result ->
             case result of
                 Err err ->
@@ -185,15 +200,10 @@ update msg model =
                         , Cmd.none
                         )
                         
-processReceiveBucket : String -> Model -> (Model, Cmd Msg)
-processReceiveBucket xml model =
-    ( { model | display = xml }
-      , Cmd.none
-    )
-
 view : Model -> Html Msg
 view model =
-    div []
+    div [ style [("margin-left", "3em")]
+        ]
         [ p [] [ text model.display ]
         , p [] [ text "Account: "
                , accountSelector model
@@ -215,7 +225,16 @@ view model =
                , button [ onClick GetObject ]
                    [ text "Get Object" ]
                ]
-            ]
+        , p []
+            [ textarea [ cols 80
+                       , rows 20
+                       , value model.text
+                       ]
+                  []
+            ]                  
+        , p []
+            [ showKeys model ]
+        ]
 
 accountSelector : Model -> Html Msg
 accountSelector model =
@@ -240,3 +259,60 @@ bucketOption model bucket =
            , selected (model.bucket == bucket)
            ]
         [ text bucket ]
+
+thText : String -> Html Msg
+thText string =
+    th [] [ text string ]
+
+tdAlignHtml : String -> Html Msg -> Html Msg
+tdAlignHtml alignment html =
+    td [ style [ ("padding-left", "1em")
+               , ("padding-right", "1em")
+               , ("text-align", alignment)
+               ]
+       ]
+    [ html ]
+
+tdAlignText : String -> String -> Html Msg
+tdAlignText alignment string =
+    tdAlignHtml alignment <| text string
+
+tdText : String -> Html Msg
+tdText string =
+    tdAlignText "left" string
+
+showKeys : Model -> Html Msg
+showKeys model =
+    case model.keyList of
+        Nothing ->
+            text ""
+        Just keyList ->
+            table []
+                <| List.concat
+                    [ [ tr []
+                            [ thText "Key"
+                            , thText "Size"
+                            , thText "Modified"
+                            , thText "Owner"
+                            ]
+                      ]
+                    , keyRows keyList
+                    ]
+
+keyRows : KeyList -> List (Html Msg)
+keyRows keyList =
+    List.map keyRow keyList.keys
+
+keyRow : Key -> Html Msg
+keyRow key =
+    tr []
+        [ tdAlignHtml "left"
+              (a [ href "#"
+                 , onClick <| GetKey key.key
+                 ]
+                   [ text key.key ]
+              )
+        , tdAlignText "right" <| toString key.size
+        , tdText key.lastModified
+        , tdText key.owner.displayName
+        ]
