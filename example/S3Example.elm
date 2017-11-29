@@ -277,6 +277,10 @@ tdAlignText : String -> String -> Html Msg
 tdAlignText alignment string =
     tdAlignHtml alignment <| text string
 
+tdHtml : Html Msg -> Html Msg
+tdHtml html =
+    tdAlignHtml "left" html
+
 tdText : String -> Html Msg
 tdText string =
     tdAlignText "left" string
@@ -303,15 +307,17 @@ keyRows : KeyList -> List (Html Msg)
 keyRows keyList =
     List.map keyRow keyList.keys
 
+link : String -> (String -> Msg) -> Html Msg
+link string msg =
+    a [ href "#"
+      , onClick <| msg string
+      ]
+    [ text string ]
+
 keyRow : Key -> Html Msg
 keyRow key =
     tr []
-        [ tdAlignHtml "left"
-              (a [ href "#"
-                 , onClick <| GetKey key.key
-                 ]
-                   [ text key.key ]
-              )
+        [ tdHtml <| link key.key GetKey
         , tdAlignText "right" <| toString key.size
         , tdText key.lastModified
         , tdText key.owner.displayName
