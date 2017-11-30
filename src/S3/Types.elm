@@ -12,6 +12,7 @@
 module S3.Types exposing ( Error(..), Account
                          , StorageClass, Owner, Key, KeyList
                          , Query, QueryElement(..)
+                         , CannedAcl(..), aclToString
                          )
 
 import Xml.Extra exposing ( DecodeDetails )
@@ -62,11 +63,43 @@ type alias KeyList =
     , keys : List Key
     }
 
+-- http://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl
+type CannedAcl
+    = AclPrivate
+    | AclPublicRead
+    | AclPublicReadWrite
+    | AclAwsExecRead
+    | AclAuthenticatedRead
+    | AclBucketOwnerRead
+    | AclBucketOwnerFullControl
+    | AclLogDeliveryWrite
+
+aclToString : CannedAcl -> String
+aclToString acl =
+    case acl of
+        AclPrivate ->
+            "private"
+        AclPublicRead ->
+            "public-read"
+        AclPublicReadWrite ->
+            "public-read-write"
+        AclAwsExecRead ->
+            "aws-exec-read"
+        AclAuthenticatedRead ->
+            "authenticated-read"
+        AclBucketOwnerRead ->
+            "bucket-owner-read"
+        AclBucketOwnerFullControl ->
+            "bucket-owner-full-control"
+        AclLogDeliveryWrite ->
+            "log-delivery-write"
+
 type QueryElement
     = Delimiter String
     | Marker String
     | MaxKeys Int
     | Prefix String
+    | XAmzAcl CannedAcl
 
 type alias Query =
     List QueryElement

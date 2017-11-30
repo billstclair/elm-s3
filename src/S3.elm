@@ -11,12 +11,14 @@
 
 module S3 exposing ( readAccounts, decodeAccounts, makeCredentials
                    , htmlBody, jsonBody, stringBody
-                   , listKeys, getObject, putObject
+                   , listKeys, getObject
+                   , putObjectWithHeaders, putObject, putHtmlObject
                    )
 
 import S3.Types exposing ( Error(..), Account
                          , StorageClass, Key, KeyList
                          , Query, QueryElement(..)
+                         , CannedAcl(..), aclToString
                          )
 
 import S3.Parser exposing ( parseListBucketResponse
@@ -27,7 +29,7 @@ import AWS.Core.Credentials exposing ( Credentials
                                      , fromAccessKeys )
 import AWS.Core.Http exposing ( Method(..), Request, Response, Body
                               , responseData, emptyBody
-                              , request
+                              , request, requestWithHeaders
                               )
 
 import Http
@@ -143,6 +145,7 @@ formatQuery query =
                                  Marker s -> ("marker", s)
                                  MaxKeys cnt -> ("max-keys", toString cnt)
                                  Prefix s -> ("prefix", s)
+                                 XAmzAcl acl -> ("x-amz-acl", aclToString acl)
                         )
     in
         List.map formatElement query
@@ -196,13 +199,22 @@ stringBody : String -> String -> Body
 stringBody =
     AWS.Core.Http.stringBody
 
-putObject : Account -> String -> String -> Body -> Task Error String
-putObject account bucket key body =
-    let req = request PUT (objectPath bucket key)
-              [("x-amz-acl", "public-read")]
+putObjectWithHeaders : Account -> String -> String -> Query -> Body -> Task Error String
+putObjectWithHeaders account bucket key headers body =
+    let req = requestWithHeaders PUT
+              (formatQuery headers)
+              (objectPath bucket key)
+              []
               body
               JD.string
-              
     in
         send account req
             |> Task.onError handleBadPayload
+
+putObject : Account -> String -> String -> Body -> Task Error String
+putObject account bucket key body =
+    putObjectWithHeaders account bucket key [XAmzAcl AclPublicRead] body
+
+putHtmlObject : Account -> String -> String -> String -> Task Error String
+putHtmlObject account bucket key html =
+    putObject account bucket key <| htmlBody html

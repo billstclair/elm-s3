@@ -64,6 +64,9 @@ type Msg
     | SetKey String
     | GetObject
     | GetKey String
+    | SetText String
+    | PutObject
+    | ReceivePutObject (Result Error String)
 
 init : (Model, Cmd Msg)
 init =
@@ -89,6 +92,12 @@ getObject model =
     let task = S3.getObject model.account model.bucket model.key
     in
         Task.attempt ReceiveGetObject task
+
+putObject : Model -> Cmd Msg
+putObject model =
+    let task = S3.putHtmlObject model.account model.bucket model.key model.text
+    in
+        Task.attempt ReceivePutObject task
 
 defaultAccount : Account
 defaultAccount =
@@ -131,7 +140,7 @@ update msg model =
             , Cmd.none
             )
         ListBucket ->
-            ( model
+            ( { model | display = "Getting bucket listing..." }
             , listBucket model
             )
         ReceiveListBucket result ->
@@ -141,7 +150,9 @@ update msg model =
                     , Cmd.none
                     )
                 Ok keys ->
-                    ( { model | keyList = Just keys }
+                    ( { model
+                          | display = "Bucket listing received."
+                          , keyList = Just keys }
                     , Cmd.none
                     )
         SetKey key ->
@@ -174,6 +185,29 @@ update msg model =
             ( { model | key = key }
             , Task.perform (\_ -> GetObject) <| Task.succeed ()
             )
+        SetText text ->
+            ( { model | text = text }
+            , Cmd.none
+            )
+        PutObject ->
+            if model.key == "" then
+                ( { model | display = "Blank key." }
+                , Cmd.none
+                )
+            else
+                ( { model | display = "Writing " ++ model.key ++ "..." }
+                , putObject model
+                )
+        ReceivePutObject result ->
+            case result of
+                Err err ->
+                    ( { model | display = toString err }
+                    , Cmd.none
+                    )
+                Ok res ->
+                    ( { model | display = "Put " ++ model.key }
+                    , Cmd.none
+                    )
         ReceiveAccounts result ->
             case result of
                 Err err ->
@@ -224,11 +258,15 @@ view model =
                , text " "
                , button [ onClick GetObject ]
                    [ text "Get Object" ]
+               , text " "
+               , button [ onClick PutObject ]
+                   [ text "Put Object" ]
                ]
         , p []
             [ textarea [ cols 80
                        , rows 20
                        , value model.text
+                       , onInput SetText
                        ]
                   []
             ]                  
