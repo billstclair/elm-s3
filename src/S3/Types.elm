@@ -15,18 +15,41 @@ module S3.Types exposing ( Error(..), Account
                          , CannedAcl(..), aclToString
                          )
 
+{-| Types for S3 module
+
+# Types
+
+@docs Error, Account, StorageClass, Owner, Key, KeyList, Query, QueryElement, CannedAcl
+
+# Functions
+
+@docs aclToString
+-}
+
 import Xml.Extra exposing ( DecodeDetails )
 
 import AWS.Core.Service as Service
 
 import Http
 
+{-| Errors returned from S3 operations
+
+`Http.Error` is from the standard Elm `Http` module.
+
+`MalformedXmlError` denotes an error in parsing the raw XML returned by S3.
+
+`ParseError` denotes an error turning the parsed XML into an Elm object.
+
+`DecodeError` denotes a Decoder error in parsing S3 account info.
+-}
 type Error
     = HttpError Http.Error
     | MalformedXmlError String
-    | DecodeError String
     | ParseError DecodeDetails
+    | DecodeError String
 
+{-| Information about en S3 account
+-}
 type alias Account =
     { name : String
     , region : Maybe String
@@ -36,14 +59,20 @@ type alias Account =
     , serviceGetters : Service.Getters
     }
 
+{-| The StorageClass for a key returned from listing a bucket's contents.
+-}
 type alias StorageClass =
     String
 
+{-| The owner of an object returned from listing a bucket's contents.
+-}
 type alias Owner =
     { id : String
     , displayName : String
     }
           
+{-| Information about a single key returned from listing a bucket's contents.
+-}
 type alias Key =
     { key : String
     , lastModified : String
@@ -53,6 +82,10 @@ type alias Key =
     , owner : Owner
     }
 
+{-| All the information returned from listing a bucket's contents.
+
+An Elm encoding of the ListBucketResult XML element.
+-}
 type alias KeyList =
     { name : String
     , prefix : Maybe String
@@ -63,6 +96,8 @@ type alias KeyList =
     , keys : List Key
     }
 
+{-| Values for the XAmzAcl Query type.
+-} 
 -- http://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl
 type CannedAcl
     = AclPrivate
@@ -74,6 +109,8 @@ type CannedAcl
     | AclBucketOwnerFullControl
     | AclLogDeliveryWrite
 
+{-| Convert a `CannedAcl` to a String.
+-}
 aclToString : CannedAcl -> String
 aclToString acl =
     case acl of
@@ -94,6 +131,12 @@ aclToString acl =
         AclLogDeliveryWrite ->
             "log-delivery-write"
 
+{-| An element of a `Query`, used for HTTP headers and query parameters.
+
+`XAmzAcl` is used as a header with `S3.putObject`.
+
+The others are used as query parameters with `S3.listKeys`.
+-}
 type QueryElement
     = Delimiter String
     | Marker String
@@ -101,5 +144,7 @@ type QueryElement
     | Prefix String
     | XAmzAcl CannedAcl
 
+{-| A list of `QueryElement`s.
+-}
 type alias Query =
     List QueryElement

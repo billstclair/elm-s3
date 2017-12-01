@@ -9,11 +9,22 @@
 --
 ----------------------------------------------------------------------
 
-module S3 exposing ( readAccounts, decodeAccounts, makeCredentials
+module S3 exposing ( readAccounts, decodeAccounts
                    , htmlBody, jsonBody, stringBody
-                   , listKeys, getObject
+                   , listKeys, getObject, deleteObject
                    , putObjectWithHeaders, putObject, putHtmlObject
                    )
+
+{-| Elm client for the AWS Simple Storage Service (S3) or Digital Ocean Spaces.
+
+# Functions
+
+@docs readAccounts, decodeAccounts
+@docs htmlBody, jsonBody, stringBody
+@docs listKeys, getObject, deleteObject
+@docs putObjectWithHeaders, putObject, putHtmlObject
+
+-}
 
 import S3.Types exposing ( Error(..), Account
                          , StorageClass, Key, KeyList
@@ -41,6 +52,30 @@ defaultAccountsUrl : String
 defaultAccountsUrl =
     "accounts.json"
 
+{-| Read JSON from a URL and turn it into a list of `Account`s.
+
+If `Nothing` is passed for the first arg (the URL), will use the default of `"accounts.json"`.
+
+You're not going to want to store the secret keys in this JSON in plain text anywhere but your development machine. I'll add support eventually for encryption of the accounts JSON.
+
+Example JSON (the `buckets` are used only by the example code):
+
+    [{"name": "Digital Ocean",
+      "region": "nyc3",
+      "is-digital-ocean": true,
+      "access-key": "<20-character access key>",
+      "secret-key": "<40-character secret key>",
+      "buckets": ["bucket1","bucket2"]
+     },
+     {"name": "Amazon S3",
+      "region": "us-east-1",
+      "access-key": "<20-character access key>",
+      "secret-key": "<40-character secret key>",
+      "buckets": ["bucket3","bucket4","bucket5"]
+     }
+    ]
+
+-}
 readAccounts : Maybe String -> Task Error (List Account)
 readAccounts maybeUrl =
     let url = case maybeUrl of
@@ -98,6 +133,8 @@ accountsDecoder : Decoder (List Account)
 accountsDecoder =
     JD.list accountDecoder
 
+{-| Decode a JSON string encoding a list of `Account`s
+-}
 decodeAccounts : String -> Result Error (List Account)
 decodeAccounts json =
     case JD.decodeString accountsDecoder json of
@@ -150,6 +187,10 @@ formatQuery query =
     in
         List.map formatElement query
 
+{-| List the keys for an S3 bucket.
+
+The Query is used to specify the delimiter, marker, max-keys, and prefix for the request.
+-}
 listKeys : Account -> String -> Query -> Task Error KeyList
 listKeys account bucket query =
     let req = request GET ("/" ++ bucket ++ "/") (formatQuery query) emptyBody JD.string
@@ -178,6 +219,10 @@ objectPath : String -> String -> String
 objectPath bucket key =
     "/" ++ bucket ++ "/" ++ key
 
+{-| Read an S3 object.
+
+The two `String` parameters are bucket and key.
+-}
 getObject : Account -> String -> String -> Task Error String
 getObject account bucket key =
     let req = request GET (objectPath  bucket key)
@@ -186,19 +231,32 @@ getObject account bucket key =
         send account req
             |> Task.onError handleBadPayload
 
+{-| Create an HTML body for `putObject` and `putObjectWithHeaders`.
+-}
 htmlBody : String -> Body
 htmlBody =
     AWS.Core.Http.htmlBody
 
+{-| Create a JSON body for `putObject` and `putObjectWithHeaders`.
+-}
 jsonBody : JE.Value -> Body
 jsonBody =
     AWS.Core.Http.jsonBody
 
--- stringBody mimetype string
+{-| Create an body with any mimetype for `putObject` and `putObjectWithHeaders`.
+
+    stringBody mimetype string
+
+Where `mimetype` is, for example, `"text/html"`.
+-}
 stringBody : String -> String -> Body
 stringBody =
     AWS.Core.Http.stringBody
 
+{-| Write an object to S3, with headers that can control, for example, the ACL.
+
+The two `String` parameters are bucket and key.
+-}
 putObjectWithHeaders : Account -> String -> String -> Query -> Body -> Task Error String
 putObjectWithHeaders account bucket key headers body =
     let req = requestWithHeaders PUT
@@ -211,10 +269,35 @@ putObjectWithHeaders account bucket key headers body =
         send account req
             |> Task.onError handleBadPayload
 
+{-| Write an object to S3, with public-read permission.
+
+The two `String` parameters are bucket and key.
+-}
 putObject : Account -> String -> String -> Body -> Task Error String
 putObject account bucket key body =
     putObjectWithHeaders account bucket key [XAmzAcl AclPublicRead] body
 
+{-| Write an Html string to S3, with public-read permission.
+
+The first two `String` parameters are bucket and key.
+
+The third `String` parameter is the string to write to the object.
+-}
 putHtmlObject : Account -> String -> String -> String -> Task Error String
 putHtmlObject account bucket key html =
     putObject account bucket key <| htmlBody html
+
+{-| Delete an S3 object.
+
+The two `String` parameters are bucket and key.
+-}
+deleteObject : Account -> String -> String -> Task Error String
+deleteObject account bucket key =
+    let req = request DELETE
+              (objectPath bucket key)
+              []
+              emptyBody
+              JD.string
+    in
+        send account req
+            |> Task.onError handleBadPayload

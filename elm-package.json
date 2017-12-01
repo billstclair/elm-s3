@@ -7,7 +7,10 @@
         "src",
         "elm-aws-core/src"
     ],
-    "exposed-modules": [],
+    "exposed-modules": [
+        "S3",
+        "S3.Types"
+    ],
     "dependencies": {
         "Bogdanp/elm-querystring": "1.0.0 <= v < 2.0.0",
         "NoRedInk/elm-decode-pipeline": "3.0.0 <= v < 4.0.0",

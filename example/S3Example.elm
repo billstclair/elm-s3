@@ -11,7 +11,7 @@
 
 module S3Example exposing (..)
 
-import S3 exposing ( readAccounts, makeCredentials )
+import S3 exposing ( readAccounts )
 import S3.Types exposing ( Error(..), Account, Key, KeyList
                          , QueryElement(..)
                          )
@@ -67,6 +67,8 @@ type Msg
     | SetText String
     | PutObject
     | ReceivePutObject (Result Error String)
+    | DeleteObject
+    | ReceiveDeleteObject (Result Error String)
 
 init : (Model, Cmd Msg)
 init =
@@ -98,6 +100,12 @@ putObject model =
     let task = S3.putHtmlObject model.account model.bucket model.key model.text
     in
         Task.attempt ReceivePutObject task
+
+deleteObject : Model -> Cmd Msg
+deleteObject model =
+    let task = S3.deleteObject model.account model.bucket model.key
+    in
+        Task.attempt ReceiveDeleteObject task
 
 defaultAccount : Account
 defaultAccount =
@@ -209,6 +217,25 @@ update msg model =
                     ( { model | display = "Put " ++ model.key }
                     , Cmd.none
                     )
+        DeleteObject ->
+            if model.key == "" then
+                ( { model | display = "Blank key." }
+                , Cmd.none
+                )
+            else
+                ( { model | display = "Deleting " ++ model.key ++ "..." }
+                , deleteObject model
+                )
+        ReceiveDeleteObject result ->
+            case result of
+                Err err ->
+                    ( { model | display = toString err }
+                    , Cmd.none
+                    )
+                Ok res ->
+                    ( { model | display = "Deleted " ++ model.key }
+                    , Cmd.none
+                    )
         ReceiveAccounts result ->
             case result of
                 Err err ->
@@ -258,10 +285,13 @@ view model =
                      []
                , text " "
                , button [ onClick GetObject ]
-                   [ text "Get Object" ]
+                   [ text "Get" ]
                , text " "
                , button [ onClick PutObject ]
-                   [ text "Put Object" ]
+                   [ text "Put" ]
+               , text " "
+               , button [ onClick DeleteObject ]
+                   [ text "Delete" ]
                ]
         , p []
             [ textarea [ cols 80
