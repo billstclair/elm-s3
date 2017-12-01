@@ -103,8 +103,8 @@ makeCredentials : Account -> Credentials
 makeCredentials account =
     fromAccessKeys account.accessKey account.secretKey
 
-serviceGetters : Bool -> Service -> Service
-serviceGetters isDigitalOcean =
+serviceModifier : Bool -> Service -> Service
+serviceModifier isDigitalOcean =
     if isDigitalOcean then
         Service.toDigitalOceanSpaces
     else
@@ -122,7 +122,7 @@ accountDecoder =
         (JD.field "access-key" JD.string)
         (JD.field "secret-key" JD.string)
         (JD.field "buckets" (JD.list JD.string))
-        (JD.map serviceGetters
+        (JD.map serviceModifier
              <| JD.oneOf
              [ JD.field "is-digital-ocean" JD.bool
              , JD.succeed False
@@ -160,10 +160,10 @@ makeService { region, serviceModifier } =
     case region of
         Nothing ->
             Service.defineGlobal
-                endpointPrefix apiVersion protocol Service.signV4 serviceModifier
+                endpointPrefix apiVersion protocol Service.signS3 serviceModifier
         Just region ->
             Service.defineRegional
-                endpointPrefix apiVersion protocol Service.signV4 serviceModifier region
+                endpointPrefix apiVersion protocol Service.signS3 serviceModifier region
 
 send : Account -> Request a -> Task Http.Error a
 send account req =
@@ -176,6 +176,7 @@ formatQuery : Query -> List (String, String)
 formatQuery query =
     let formatElement = (\element ->
                              case element of
+                                 AnyQuery k v -> (k, v)
                                  Delimiter s -> ("delimiter", s)
                                  Marker s -> ("marker", s)
                                  MaxKeys cnt -> ("max-keys", toString cnt)
@@ -254,7 +255,7 @@ stringBody : String -> String -> Body
 stringBody =
     AWS.Core.Http.stringBody
 
-{-| Write an object to S3, with headers that can control, for example, the ACL.
+{-| Write an object to S3, with headers that can control, for example, the canned ACL.
 
 The two `String` parameters are bucket and key.
 -}

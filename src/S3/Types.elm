@@ -34,11 +34,11 @@ import Http
 
 {-| Errors returned from S3 operations
 
-`Http.Error` is from the standard Elm `Http` module.
+`HttpError` is from the standard Elm `Http` module.
 
 `MalformedXmlError` denotes an error in parsing the raw XML returned by S3.
 
-`ParseError` denotes an error turning the parsed XML into an Elm object.
+`ParseError` denotes an error turning that parsed XML into an Elm object.
 
 `DecodeError` denotes a Decoder error in parsing S3 account info.
 -}
@@ -48,7 +48,7 @@ type Error
     | ParseError DecodeDetails
     | DecodeError String
 
-{-| Information about en S3 account
+{-| Information about an S3 account
 -}
 type alias Account =
     { name : String
@@ -133,16 +133,19 @@ aclToString acl =
 
 {-| An element of a `Query`, used for HTTP headers and query parameters.
 
+`AnyQuery` allows you to encode any key/value pair.
+
 `XAmzAcl` is used as a header with `S3.putObject`.
 
 The others are used as query parameters with `S3.listKeys`.
 -}
 type QueryElement
-    = Delimiter String
+    = AnyQuery String String
+    | XAmzAcl CannedAcl
+    | Delimiter String
     | Marker String
     | MaxKeys Int
     | Prefix String
-    | XAmzAcl CannedAcl
 
 {-| A list of `QueryElement`s.
 -}

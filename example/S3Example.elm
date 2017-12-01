@@ -114,7 +114,7 @@ defaultAccount =
     , accessKey = ""
     , secretKey = ""
     , buckets = [ "No bucket" ]
-    , serviceGetters = Service.s3Getters
+    , serviceModifier = identity
     }
 
 findAccount : Model -> String -> Account
