@@ -20,10 +20,6 @@ import Xml.Extra exposing ( TagSpec, Required ( Required, Optional, Multiple )
                           , decodeXml, requiredTag, optionalTag, multipleTag
                           )
 
-import Xml exposing ( Value(..) )
-import Xml.Decode as XD
-import Xml.Query as XQ
-
 import Json.Decode as JD exposing ( Decoder )
 
 makeError : Xml.Extra.Error -> Error
