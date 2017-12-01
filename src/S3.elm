@@ -38,9 +38,9 @@ import S3.Parser exposing ( parseListBucketResponse
 import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
 import AWS.Core.Credentials exposing ( Credentials
                                      , fromAccessKeys )
-import AWS.Core.Http exposing ( Method(..), Request, Response, Body
-                              , responseData, emptyBody
-                              , request, requestWithHeaders
+import AWS.Core.Http exposing ( Method(..), Request, Body
+                              , emptyBody
+                              , request, addQuery, addHeaders
                               )
 
 import Http
@@ -103,12 +103,12 @@ makeCredentials : Account -> Credentials
 makeCredentials account =
     fromAccessKeys account.accessKey account.secretKey
 
-serviceGetters : Bool -> Service.Getters
+serviceGetters : Bool -> Service -> Service
 serviceGetters isDigitalOcean =
     if isDigitalOcean then
-        Service.digitalOceanGetters
+        Service.toDigitalOceanSpaces
     else
-        Service.s3Getters
+        identity
 
 accountDecoder : Decoder Account
 accountDecoder =
@@ -156,16 +156,14 @@ protocol =
     Service.restXml
 
 makeService : Account -> Service
-makeService account =
-    let sdo = Service.setGetters account.serviceGetters
-    in
-        case account.region of
-            Nothing ->
-                Service.defineGlobal
-                    endpointPrefix apiVersion protocol Service.signV4 sdo
-            Just region ->
-                Service.defineRegional
-                    endpointPrefix apiVersion protocol Service.signV4 sdo region
+makeService { region, serviceModifier } =
+    case region of
+        Nothing ->
+            Service.defineGlobal
+                endpointPrefix apiVersion protocol Service.signV4 serviceModifier
+        Just region ->
+            Service.defineRegional
+                endpointPrefix apiVersion protocol Service.signV4 serviceModifier region
 
 send : Account -> Request a -> Task Http.Error a
 send account req =
@@ -174,7 +172,7 @@ send account req =
     in
         AWS.Core.Http.send service credentials req
 
-formatQuery : Query -> AWS.Core.Http.Query
+formatQuery : Query -> List (String, String)
 formatQuery query =
     let formatElement = (\element ->
                              case element of
@@ -193,7 +191,11 @@ The Query is used to specify the delimiter, marker, max-keys, and prefix for the
 -}
 listKeys : Account -> String -> Query -> Task Error KeyList
 listKeys account bucket query =
-    let req = request GET ("/" ++ bucket ++ "/") (formatQuery query) emptyBody JD.string
+    let req = request GET
+                  ("/" ++ bucket ++ "/")
+                  emptyBody
+                  JD.string
+                  |> addQuery (formatQuery query)
         task = send account req
     in
         Task.andThen parseListBucketResponseTask
@@ -225,8 +227,7 @@ The two `String` parameters are bucket and key.
 -}
 getObject : Account -> String -> String -> Task Error String
 getObject account bucket key =
-    let req = request GET (objectPath  bucket key)
-              [] emptyBody JD.string        
+    let req = request GET (objectPath bucket key) emptyBody JD.string
     in
         send account req
             |> Task.onError handleBadPayload
@@ -235,7 +236,7 @@ getObject account bucket key =
 -}
 htmlBody : String -> Body
 htmlBody =
-    AWS.Core.Http.htmlBody
+    AWS.Core.Http.stringBody "text/html"
 
 {-| Create a JSON body for `putObject` and `putObjectWithHeaders`.
 -}
@@ -259,12 +260,11 @@ The two `String` parameters are bucket and key.
 -}
 putObjectWithHeaders : Account -> String -> String -> Query -> Body -> Task Error String
 putObjectWithHeaders account bucket key headers body =
-    let req = requestWithHeaders PUT
-              (formatQuery headers)
+    let req = request PUT
               (objectPath bucket key)
-              []
               body
               JD.string
+              |> addHeaders (formatQuery headers)
     in
         send account req
             |> Task.onError handleBadPayload
@@ -295,7 +295,6 @@ deleteObject : Account -> String -> String -> Task Error String
 deleteObject account bucket key =
     let req = request DELETE
               (objectPath bucket key)
-              []
               emptyBody
               JD.string
     in

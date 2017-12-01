@@ -28,7 +28,7 @@ module S3.Types exposing ( Error(..), Account
 
 import Xml.Extra exposing ( DecodeDetails )
 
-import AWS.Core.Service as Service
+import AWS.Core.Service as Service exposing ( Service )
 
 import Http
 
@@ -56,7 +56,7 @@ type alias Account =
     , accessKey : String
     , secretKey : String
     , buckets : List String
-    , serviceGetters : Service.Getters
+    , serviceModifier : Service -> Service
     }
 
 {-| The StorageClass for a key returned from listing a bucket's contents.
