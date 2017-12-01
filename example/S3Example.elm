@@ -132,6 +132,7 @@ update msg model =
                       | account = account
                       , bucket = bucket
                       , display = "Account: " ++ name
+                      , keyList = Nothing
                   }
                 , Cmd.none
             )
