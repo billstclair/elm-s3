@@ -17,7 +17,9 @@ module S3
         , addQuery
         , decodeAccounts
         , deleteObject
+        , getFullObject
         , getObject
+        , getObjectWithHeaders
         , htmlBody
         , jsonBody
         , listKeys
@@ -41,7 +43,7 @@ module S3
 
 @docs readAccounts, decodeAccounts
 @docs htmlBody, jsonBody, stringBody
-@docs listKeys, getObject, deleteObject
+@docs listKeys, getObject, getFullObject, getObjectWithHeaders, deleteObject
 @docs putObject, putPublicObject, putHtmlObject
 @docs addQuery, addHeaders
 @docs send
@@ -61,6 +63,7 @@ import AWS.Core.Http
         , request
         )
 import AWS.Core.Service as Service exposing (ApiVersion, Protocol, Service)
+import Dict
 import Http
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
@@ -256,6 +259,9 @@ type Request a
         { httpRequest : AWS.Core.Http.Request String
         , andThen : String -> Task Error a
         }
+    | FullRequest
+        { httpRequest : AWS.Core.Http.Request a
+        }
 
 
 identityAndThen : String -> Task Error String
@@ -267,20 +273,22 @@ identityAndThen string =
 -}
 send : Account -> Request a -> Task Error a
 send account req =
+    let
+        service =
+            makeService account
+
+        credentials =
+            makeCredentials account
+    in
     case addHeaders [ AnyQuery "Accept" "*/*" ] req of
         Request { httpRequest, andThen } ->
-            let
-                service =
-                    makeService account
+            AWS.Core.Http.send service credentials httpRequest
+                |> Task.onError handleBadPayload
+                |> Task.andThen andThen
 
-                credentials =
-                    makeCredentials account
-
-                task =
-                    AWS.Core.Http.send service credentials httpRequest
-                        |> Task.onError handleBadPayload
-            in
-            Task.andThen andThen task
+        FullRequest { httpRequest } ->
+            AWS.Core.Http.send service credentials httpRequest
+                |> Task.onError (Task.fail << HttpError)
 
 
 formatQuery : Query -> List ( String, String )
@@ -313,8 +321,8 @@ formatQuery query =
 {-| Add headers to a `Request`.
 -}
 addHeaders : Query -> Request a -> Request a
-addHeaders headers req =
-    case req of
+addHeaders headers request =
+    case request of
         Request req ->
             Request
                 { req
@@ -322,17 +330,28 @@ addHeaders headers req =
                         AWS.Core.Http.addHeaders (formatQuery headers) req.httpRequest
                 }
 
+        FullRequest req ->
+            FullRequest
+                { httpRequest =
+                    AWS.Core.Http.addHeaders (formatQuery headers) req.httpRequest
+                }
+
 
 {-| Add query parameters to a `Request`.
 -}
 addQuery : Query -> Request a -> Request a
-addQuery query req =
-    case req of
+addQuery query request =
+    case request of
         Request req ->
             Request
                 { req
-                    | httpRequest =
-                        AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
+                    | httpRequest = AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
+                }
+
+        FullRequest req ->
+            FullRequest
+                { httpRequest =
+                    AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
                 }
 
 
@@ -383,6 +402,41 @@ getObject bucket key =
         { httpRequest = req
         , andThen = identityAndThen
         }
+
+
+{-| Get an object and process the entire Http Response.
+
+    responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
+    responseHeaders response =
+        Ok <| ( response.body, Dict.toList response.headers )
+
+    getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) )
+    getObjectWithHeaders bucket key =
+        getFullObject bucket key responseHeaders
+
+-}
+getFullObject : Bucket -> Key -> (Http.Response String -> Result String a) -> Request a
+getFullObject bucket key parser =
+    let
+        req =
+            request GET (objectPath bucket key) emptyBody (JD.fail "Can't happen")
+    in
+    FullRequest
+        { httpRequest =
+            AWS.Core.Http.setResponseParser (Just parser) req
+        }
+
+
+responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
+responseHeaders response =
+    Ok <| ( response.body, Dict.toList response.headers )
+
+
+{-| Get an object with its HTTP response headers.
+-}
+getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) )
+getObjectWithHeaders bucket key =
+    getFullObject bucket key responseHeaders
 
 
 {-| Create an HTML body for `putObject` and friends.
