@@ -242,36 +242,23 @@ makeService { region, isDigitalOcean } =
                 region
 
 
-handleBadPayload : Http.Error -> Task Error String
-handleBadPayload error =
-    case error of
-        Http.BadPayload _ response ->
-            Task.succeed response.body
-
-        _ ->
-            Task.fail <| HttpError error
-
-
 {-| A request that can be turned into a Task by `S3.send`.
 -}
-type Request a
+type Request b a
     = Request
-        { httpRequest : AWS.Core.Http.Request String
-        , andThen : String -> Task Error a
-        }
-    | FullRequest
-        { httpRequest : AWS.Core.Http.Request a
+        { httpRequest : AWS.Core.Http.Request b
+        , andThen : b -> Task Error a
         }
 
 
-identityAndThen : String -> Task Error String
-identityAndThen string =
-    Task.succeed string
+identityAndThen : a -> Task Error a
+identityAndThen res =
+    Task.succeed res
 
 
 {-| Create a `Task` to send a signed request over the wire.
 -}
-send : Account -> Request a -> Task Error a
+send : Account -> Request b a -> Task Error a
 send account req =
     let
         service =
@@ -283,12 +270,8 @@ send account req =
     case addHeaders [ AnyQuery "Accept" "*/*" ] req of
         Request { httpRequest, andThen } ->
             AWS.Core.Http.send service credentials httpRequest
-                |> Task.onError handleBadPayload
-                |> Task.andThen andThen
-
-        FullRequest { httpRequest } ->
-            AWS.Core.Http.send service credentials httpRequest
                 |> Task.onError (Task.fail << HttpError)
+                |> Task.andThen andThen
 
 
 formatQuery : Query -> List ( String, String )
@@ -320,66 +303,74 @@ formatQuery query =
 
 {-| Add headers to a `Request`.
 -}
-addHeaders : Query -> Request a -> Request a
+addHeaders : Query -> Request b a -> Request b a
 addHeaders headers request =
     case request of
         Request req ->
             Request
                 { req
                     | httpRequest =
-                        AWS.Core.Http.addHeaders (formatQuery headers) req.httpRequest
-                }
-
-        FullRequest req ->
-            FullRequest
-                { httpRequest =
-                    AWS.Core.Http.addHeaders (formatQuery headers) req.httpRequest
+                        AWS.Core.Http.addHeaders
+                            (formatQuery headers)
+                            req.httpRequest
                 }
 
 
 {-| Add query parameters to a `Request`.
 -}
-addQuery : Query -> Request a -> Request a
+addQuery : Query -> Request b a -> Request b a
 addQuery query request =
     case request of
         Request req ->
             Request
                 { req
-                    | httpRequest = AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
+                    | httpRequest =
+                        AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
                 }
 
-        FullRequest req ->
-            FullRequest
-                { httpRequest =
-                    AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
-                }
+
+parserRequest : Method -> String -> Body -> (Http.Response String -> Result String b) -> (b -> Task Error a) -> Request b a
+parserRequest method url body parser andThen =
+    let
+        req =
+            request method url body (JD.fail "Can't happen.")
+    in
+    Request
+        { httpRequest =
+            AWS.Core.Http.setResponseParser parser req
+        , andThen = andThen
+        }
+
+
+requestBodyResult : Http.Response String -> Result String String
+requestBodyResult response =
+    Ok response.body
+
+
+stringRequest : Method -> String -> Body -> Request String String
+stringRequest method url body =
+    parserRequest method url body requestBodyResult identityAndThen
 
 
 {-| Create a `Request` to list the keys for an S3 bucket.
 -}
-listKeys : Bucket -> Request KeyList
+listKeys : Bucket -> Request String KeyList
 listKeys bucket =
-    let
-        req =
-            request GET
-                ("/" ++ bucket ++ "/")
-                emptyBody
-                JD.string
-    in
-    Request
-        { httpRequest = req
-        , andThen = parseListBucketResponseTask
-        }
+    parserRequest GET
+        ("/" ++ bucket ++ "/")
+        emptyBody
+        requestBodyResult
+        parseListBucketResponseResult
 
 
-parseListBucketResponseTask : String -> Task Error KeyList
-parseListBucketResponseTask xml =
+parseListBucketResponseResult : String -> Task Error KeyList
+parseListBucketResponseResult xml =
     case parseListBucketResponse xml of
+        Ok res ->
+            Task.succeed res
+
         Err err ->
             Task.fail err
-
-        Ok buckets ->
-            Task.succeed buckets
 
 
 objectPath : Bucket -> Key -> String
@@ -389,19 +380,12 @@ objectPath bucket key =
 
 {-| Return a `Request` to read an S3 object.
 
-The contents will be in the `Result` from the `Task` created by `S3.send`.
+The contents will be the successful result of the `Task` created by `S3.send`.
 
 -}
-getObject : Bucket -> Key -> Request String
+getObject : Bucket -> Key -> Request String String
 getObject bucket key =
-    let
-        req =
-            request GET (objectPath bucket key) emptyBody JD.string
-    in
-    Request
-        { httpRequest = req
-        , andThen = identityAndThen
-        }
+    stringRequest GET (objectPath bucket key) emptyBody
 
 
 {-| Get an object and process the entire Http Response.
@@ -415,16 +399,13 @@ getObject bucket key =
         getFullObject bucket key responseHeaders
 
 -}
-getFullObject : Bucket -> Key -> (Http.Response String -> Result String a) -> Request a
+getFullObject : Bucket -> Key -> (Http.Response String -> Result String a) -> Request a a
 getFullObject bucket key parser =
-    let
-        req =
-            request GET (objectPath bucket key) emptyBody (JD.fail "Can't happen")
-    in
-    FullRequest
-        { httpRequest =
-            AWS.Core.Http.setResponseParser (Just parser) req
-        }
+    parserRequest GET
+        (objectPath bucket key)
+        emptyBody
+        parser
+        identityAndThen
 
 
 responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
@@ -434,7 +415,7 @@ responseHeaders response =
 
 {-| Get an object with its HTTP response headers.
 -}
-getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) )
+getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) ) ( String, List ( String, String ) )
 getObjectWithHeaders bucket key =
     getFullObject bucket key responseHeaders
 
@@ -468,19 +449,11 @@ stringBody =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-putObject : Bucket -> Key -> Body -> Request String
+putObject : Bucket -> Key -> Body -> Request String String
 putObject bucket key body =
-    let
-        req =
-            request PUT
-                (objectPath bucket key)
-                body
-                JD.string
-    in
-    Request
-        { httpRequest = req
-        , andThen = identityAndThen
-        }
+    stringRequest PUT
+        (objectPath bucket key)
+        body
 
 
 {-| Return a `Request` to write an object to S3, with public-read permission.
@@ -488,7 +461,7 @@ putObject bucket key body =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-putPublicObject : Bucket -> Key -> Body -> Request String
+putPublicObject : Bucket -> Key -> Body -> Request String String
 putPublicObject bucket key body =
     putObject bucket key body
         |> addHeaders [ XAmzAcl AclPublicRead ]
@@ -499,7 +472,7 @@ putPublicObject bucket key body =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-putHtmlObject : Bucket -> Key -> String -> Request String
+putHtmlObject : Bucket -> Key -> String -> Request String String
 putHtmlObject bucket key html =
     putPublicObject bucket key <| htmlBody html
 
@@ -509,16 +482,8 @@ putHtmlObject bucket key html =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-deleteObject : Bucket -> Key -> Request String
+deleteObject : Bucket -> Key -> Request String String
 deleteObject bucket key =
-    let
-        req =
-            request DELETE
-                (objectPath bucket key)
-                emptyBody
-                JD.string
-    in
-    Request
-        { httpRequest = req
-        , andThen = identityAndThen
-        }
+    stringRequest DELETE
+        (objectPath bucket key)
+        emptyBody
