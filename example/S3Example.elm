@@ -17,8 +17,6 @@ import S3.Types exposing ( Error(..), Account, KeyInfo, KeyList
                          , Key, Bucket
                          )
 
-import AWS.Core.Service as Service
-
 import Html exposing ( Html, Attribute
                      , div, text, p, h2, table, tr, th, td, a, br
                      , input, button
@@ -29,12 +27,9 @@ import Html.Attributes exposing ( href, type_, size, value, disabled, style
                                 , selected, cols, rows
                                 )
 import Html.Events exposing ( onClick, onInput, on, targetValue )
-import Http
 import Json.Decode as JD
 import Task
-import Char
 import List.Extra as LE
-import Task
 import Debug exposing ( log )
 
 main =
