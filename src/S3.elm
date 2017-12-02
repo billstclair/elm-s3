@@ -9,24 +9,34 @@
 --
 ----------------------------------------------------------------------
 
-module S3 exposing ( readAccounts, decodeAccounts
+module S3 exposing ( Request
+                   , readAccounts, decodeAccounts
                    , htmlBody, jsonBody, stringBody
                    , listKeys, getObject, deleteObject
-                   , putObjectWithHeaders, putObject, putHtmlObject
+                   , putObject, putPublicObject, putHtmlObject
+                   , addQuery, addHeaders
+                   , send
                    )
 
 {-| Elm client for the AWS Simple Storage Service (S3) or Digital Ocean Spaces.
+
+# Types
+
+@docs Request
 
 # Functions
 
 @docs readAccounts, decodeAccounts
 @docs htmlBody, jsonBody, stringBody
 @docs listKeys, getObject, deleteObject
-@docs putObjectWithHeaders, putObject, putHtmlObject
+@docs putObject, putPublicObject, putHtmlObject
+@docs addQuery, addHeaders
+@docs send
 
 -}
 
 import S3.Types exposing ( Error(..), Account
+                         , Bucket, Key, Mimetype
                          , StorageClass, Key, KeyList
                          , Query, QueryElement(..)
                          , CannedAcl(..), aclToString
@@ -38,9 +48,9 @@ import S3.Parser exposing ( parseListBucketResponse
 import AWS.Core.Service as Service exposing ( Service, ApiVersion, Protocol )
 import AWS.Core.Credentials exposing ( Credentials
                                      , fromAccessKeys )
-import AWS.Core.Http exposing ( Method(..), Request, Body
+import AWS.Core.Http exposing ( Method(..), Body
                               , emptyBody
-                              , request, addQuery, addHeaders
+                              , request
                               )
 
 import Http
@@ -165,12 +175,38 @@ makeService { region, serviceModifier } =
             Service.defineRegional
                 endpointPrefix apiVersion protocol Service.signS3 serviceModifier region
 
-send : Account -> Request a -> Task Http.Error a
+
+handleBadPayload : Http.Error -> Task Error String
+handleBadPayload error =
+    case error of
+        Http.BadPayload _ response ->
+            Task.succeed response.body
+        _ ->
+            Task.fail <| HttpError error
+
+{-| A request that can be turned into a Task by `S3.send`.
+-}
+type Request a
+    = Request { httpRequest : AWS.Core.Http.Request String
+              , andThen : String -> Task Error a
+              }
+
+identityAndThen : String -> Task Error String
+identityAndThen string =
+    Task.succeed string
+
+{-| Create a `Task` to send a signed request over the wire.
+-}
+send : Account -> Request a -> Task Error a
 send account req =
-    let service = makeService account
-        credentials = makeCredentials account
-    in
-        AWS.Core.Http.send service credentials req
+    case req of
+        Request { httpRequest, andThen } ->
+            let service = makeService account
+                credentials = makeCredentials account
+                task = AWS.Core.Http.send service credentials httpRequest
+                     |> Task.onError handleBadPayload
+            in
+                Task.andThen andThen task
 
 formatQuery : Query -> List (String, String)
 formatQuery query =
@@ -186,21 +222,40 @@ formatQuery query =
     in
         List.map formatElement query
 
-{-| List the keys for an S3 bucket.
-
-The Query is used to specify the delimiter, marker, max-keys, and prefix for the request.
+{-| Add headers to a `Request`.
 -}
-listKeys : Account -> String -> Query -> Task Error KeyList
-listKeys account bucket query =
+addHeaders : Query -> Request a -> Request a
+addHeaders headers req =
+    case req of
+        Request req ->
+            Request { req
+                        | httpRequest =
+                            AWS.Core.Http.addHeaders (formatQuery headers) req.httpRequest
+                    }
+
+{-| Add query parameters to a `Request`.
+-}
+addQuery : Query -> Request a -> Request a
+addQuery query req =
+    case req of
+        Request req ->
+            Request { req
+                        | httpRequest =
+                            AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
+                    }
+
+{-| Create a `Request` to list the keys for an S3 bucket.
+-}
+listKeys : Bucket -> Request KeyList
+listKeys bucket =
     let req = request GET
                   ("/" ++ bucket ++ "/")
                   emptyBody
                   JD.string
-                  |> addQuery (formatQuery query)
-        task = send account req
     in
-        Task.andThen parseListBucketResponseTask
-            <| Task.onError handleBadPayload task
+        Request { httpRequest = req
+                , andThen = parseListBucketResponseTask
+                }
 
 parseListBucketResponseTask : String -> Task Error KeyList
 parseListBucketResponseTask xml =
@@ -210,94 +265,85 @@ parseListBucketResponseTask xml =
         Ok buckets ->
             Task.succeed buckets
 
-handleBadPayload : Http.Error -> Task Error String
-handleBadPayload error =
-    case error of
-        Http.BadPayload _ response ->
-            Task.succeed response.body
-        _ ->
-            Task.fail <| HttpError error
-
-objectPath : String -> String -> String
+objectPath : Bucket -> Key -> String
 objectPath bucket key =
     "/" ++ bucket ++ "/" ++ key
 
-{-| Read an S3 object.
+{-| Return a `Request` to read an S3 object.
 
-The two `String` parameters are bucket and key.
+The contents will be in the `Result` from the `Task` created by `S3.send`.
 -}
-getObject : Account -> String -> String -> Task Error String
-getObject account bucket key =
+getObject : Bucket -> Key -> Request String
+getObject bucket key =
     let req = request GET (objectPath bucket key) emptyBody JD.string
     in
-        send account req
-            |> Task.onError handleBadPayload
+        Request { httpRequest = req
+                , andThen = identityAndThen
+                }
 
-{-| Create an HTML body for `putObject` and `putObjectWithHeaders`.
+{-| Create an HTML body for `putObject` and friends.
 -}
 htmlBody : String -> Body
 htmlBody =
     AWS.Core.Http.stringBody "text/html"
 
-{-| Create a JSON body for `putObject` and `putObjectWithHeaders`.
+{-| Create a JSON body for `putObject` and friends.
 -}
 jsonBody : JE.Value -> Body
 jsonBody =
     AWS.Core.Http.jsonBody
 
-{-| Create an body with any mimetype for `putObject` and `putObjectWithHeaders`.
+{-| Create a body with any mimetype for `putObject` and friends.
 
-    stringBody mimetype string
-
-Where `mimetype` is, for example, `"text/html"`.
+    stringBody "text/html" "Hello, World!"
 -}
-stringBody : String -> String -> Body
+stringBody : Mimetype -> String -> Body
 stringBody =
     AWS.Core.Http.stringBody
 
-{-| Write an object to S3, with headers that can control, for example, the canned ACL.
+{-| Return a `Request` to write an object to S3, with default permissions (private).
 
-The two `String` parameters are bucket and key.
+The string resulting from a successful `send` isn't interesting.
 -}
-putObjectWithHeaders : Account -> String -> String -> Query -> Body -> Task Error String
-putObjectWithHeaders account bucket key headers body =
+putObject : Bucket -> Key -> Body -> Request String
+putObject bucket key body =
     let req = request PUT
               (objectPath bucket key)
               body
               JD.string
-              |> addHeaders (formatQuery headers)
     in
-        send account req
-            |> Task.onError handleBadPayload
+        Request { httpRequest = req
+                , andThen = identityAndThen
+                }
 
-{-| Write an object to S3, with public-read permission.
+{-| Return a `Request` to write an object to S3, with public-read permission.
 
-The two `String` parameters are bucket and key.
+The string resulting from a successful `send` isn't interesting.
 -}
-putObject : Account -> String -> String -> Body -> Task Error String
-putObject account bucket key body =
-    putObjectWithHeaders account bucket key [XAmzAcl AclPublicRead] body
+putPublicObject : Bucket -> Key -> Body -> Request String
+putPublicObject bucket key body =
+    putObject bucket key body
+        |> addHeaders [XAmzAcl AclPublicRead] 
 
 {-| Write an Html string to S3, with public-read permission.
 
-The first two `String` parameters are bucket and key.
-
-The third `String` parameter is the string to write to the object.
+The string resulting from a successful `send` isn't interesting.
 -}
-putHtmlObject : Account -> String -> String -> String -> Task Error String
-putHtmlObject account bucket key html =
-    putObject account bucket key <| htmlBody html
+putHtmlObject : Bucket -> Key -> String -> Request String
+putHtmlObject bucket key html =
+    putPublicObject bucket key <| htmlBody html
 
-{-| Delete an S3 object.
+{-| Return a Request to delete an S3 object.
 
-The two `String` parameters are bucket and key.
+The string resulting from a successful `send` isn't interesting.
 -}
-deleteObject : Account -> String -> String -> Task Error String
-deleteObject account bucket key =
+deleteObject : Bucket -> Key -> Request String
+deleteObject bucket key =
     let req = request DELETE
               (objectPath bucket key)
               emptyBody
               JD.string
     in
-        send account req
-            |> Task.onError handleBadPayload
+        Request { httpRequest = req
+                , andThen = identityAndThen
+                }

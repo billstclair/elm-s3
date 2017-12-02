@@ -10,7 +10,8 @@
 ----------------------------------------------------------------------
 
 module S3.Types exposing ( Error(..), Account
-                         , StorageClass, Owner, Key, KeyList
+                         , Bucket, Key, Mimetype
+                         , StorageClass, Owner, KeyInfo, KeyList
                          , Query, QueryElement(..)
                          , CannedAcl(..), aclToString
                          )
@@ -19,7 +20,10 @@ module S3.Types exposing ( Error(..), Account
 
 # Types
 
-@docs Error, Account, StorageClass, Owner, Key, KeyList, Query, QueryElement, CannedAcl
+@docs Error, Account
+@docs Bucket, Key, Mimetype
+@docs StorageClass, Owner, KeyInfo, KeyList
+@docs Query, QueryElement, CannedAcl
 
 # Functions
 
@@ -71,10 +75,25 @@ type alias Owner =
     , displayName : String
     }
           
-{-| Information about a single key returned from listing a bucket's contents.
+{-| The name of an S3 bucket.
+-}
+type alias Bucket =
+    String
+
+{-| The name of an S3 key.
 -}
 type alias Key =
-    { key : String
+    String
+
+{-| An HTTP mimetype, e.g. "text/html".
+-}
+type alias Mimetype =
+    String
+
+{-| Information about a single key returned from listing a bucket's contents.
+-}
+type alias KeyInfo =
+    { key : Key
     , lastModified : String
     , eTag : String
     , size: Int
@@ -93,7 +112,7 @@ type alias KeyList =
     , nextMarker : Maybe String
     , maxKeys : Int
     , isTruncated : Bool
-    , keys : List Key
+    , keys : List KeyInfo
     }
 
 {-| Values for the XAmzAcl Query type.

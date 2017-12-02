@@ -12,8 +12,9 @@
 module S3Example exposing (..)
 
 import S3 exposing ( readAccounts )
-import S3.Types exposing ( Error(..), Account, Key, KeyList
+import S3.Types exposing ( Error(..), Account, KeyInfo, KeyList
                          , QueryElement(..)
+                         , Key, Bucket
                          )
 
 import AWS.Core.Service as Service
@@ -48,8 +49,8 @@ type alias Model =
     { display : String
     , accounts : List Account
     , account : Account
-    , bucket : String
-    , key : String
+    , bucket : Bucket
+    , key : Key
     , keyList : Maybe KeyList
     , text : String
     }
@@ -58,12 +59,12 @@ type Msg
     = SetAccount String
     | ReceiveAccounts (Result Error (List Account))
     | ReceiveGetObject (Result Error String)
-    | SetBucket String
+    | SetBucket Bucket
     | ListBucket
     | ReceiveListBucket (Result Error KeyList)
-    | SetKey String
+    | SetKey Key
     | GetObject
-    | GetKey String
+    | GetKey Key
     | SetText String
     | PutObject
     | ReceivePutObject (Result Error String)
@@ -85,25 +86,30 @@ init =
 
 listBucket : Model -> Cmd Msg
 listBucket model =
-    let task = S3.listKeys model.account model.bucket [ MaxKeys 100 ]
+    let task = S3.listKeys model.bucket
+                 |>  S3.addQuery [ MaxKeys 100 ]
+                 |> S3.send model.account
     in
         Task.attempt ReceiveListBucket task
 
 getObject : Model -> Cmd Msg
 getObject model =
-    let task = S3.getObject model.account model.bucket model.key
+    let task = S3.getObject model.bucket model.key
+                |>S3.send model.account
     in
         Task.attempt ReceiveGetObject task
 
 putObject : Model -> Cmd Msg
 putObject model =
-    let task = S3.putHtmlObject model.account model.bucket model.key model.text
+    let task = S3.putHtmlObject model.bucket model.key model.text
+                |> S3.send model.account
     in
         Task.attempt ReceivePutObject task
 
 deleteObject : Model -> Cmd Msg
 deleteObject model =
-    let task = S3.deleteObject model.account model.bucket model.key
+    let task = S3.deleteObject model.bucket model.key
+                   |> S3.send model.account
     in
         Task.attempt ReceiveDeleteObject task
 
@@ -383,11 +389,11 @@ link string msg =
       ]
     [ text string ]
 
-keyRow : Key -> Html Msg
-keyRow key =
+keyRow : KeyInfo -> Html Msg
+keyRow info =
     tr []
-        [ tdHtml <| link key.key GetKey
-        , tdAlignText "right" <| toString key.size
-        , tdText key.lastModified
-        , tdText key.owner.displayName
+        [ tdHtml <| link info.key GetKey
+        , tdAlignText "right" <| toString info.size
+        , tdText info.lastModified
+        , tdText info.owner.displayName
         ]

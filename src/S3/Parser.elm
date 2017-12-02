@@ -13,7 +13,7 @@ module S3.Parser exposing ( parseListBucketResponse
                           )
 
 import S3.Types exposing ( Error ( MalformedXmlError, ParseError )
-                         , StorageClass, Owner, Key, KeyList
+                         , StorageClass, Owner, KeyInfo, KeyList
                          )
 
 import Xml.Extra exposing ( TagSpec, Required ( Required, Optional, Multiple )
@@ -63,9 +63,9 @@ defaultOwner =
     , displayName = "nobody"
     }
 
-bucketDecoder : Decoder Key
+bucketDecoder : Decoder KeyInfo
 bucketDecoder =
-    JD.map6 Key
+    JD.map6 KeyInfo
         (JD.field "Key" JD.string)
         (JD.field "LastModified" JD.string)
         (JD.field "ETag" JD.string)
