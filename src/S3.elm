@@ -13,6 +13,7 @@
 module S3
     exposing
         ( Request
+        , accountDecoder
         , addHeaders
         , addQuery
         , decodeAccounts
@@ -39,14 +40,32 @@ module S3
 @docs Request
 
 
-# Functions
+# Turning a Request into a Task
 
-@docs readAccounts, decodeAccounts
-@docs htmlBody, jsonBody, stringBody
-@docs listKeys, getObject, getFullObject, getObjectWithHeaders, deleteObject
-@docs putObject, putPublicObject, putHtmlObject
-@docs addQuery, addHeaders
 @docs send
+
+
+# Creating S3 requests
+
+@docs listKeys
+@docs getObject, getFullObject, getObjectWithHeaders
+@docs putHtmlObject, putPublicObject, putObject
+@docs deleteObject
+
+
+# Creating Body values
+
+@docs htmlBody, jsonBody, stringBody
+
+
+# Adding queries and headers to a request
+
+@docs addQuery, addHeaders
+
+
+# Reading accounts into Elm
+
+@docs readAccounts, decodeAccounts, accountDecoder
 
 -}
 
@@ -166,6 +185,8 @@ serviceModifier isDigitalOcean =
         identity
 
 
+{-| A Decoder for the Account type.
+-}
 accountDecoder : Decoder Account
 accountDecoder =
     JD.map6 Account
@@ -243,6 +264,10 @@ makeService { region, isDigitalOcean } =
 
 
 {-| A request that can be turned into a Task by `S3.send`.
+
+`b` is an internal type that you will never care about.
+`a` is the type of the successful `Task` result from `S3.send`.
+
 -}
 type Request b a
     = Request
@@ -378,7 +403,7 @@ objectPath bucket key =
     "/" ++ bucket ++ "/" ++ key
 
 
-{-| Return a `Request` to read an S3 object.
+{-| Read an S3 object.
 
 The contents will be the successful result of the `Task` created by `S3.send`.
 
@@ -388,7 +413,7 @@ getObject bucket key =
     stringRequest GET (objectPath bucket key) emptyBody
 
 
-{-| Get an object and process the entire Http Response.
+{-| Read an object and process the entire Http Response.
 
     responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
     responseHeaders response =
@@ -413,7 +438,7 @@ responseHeaders response =
     Ok <| ( response.body, Dict.toList response.headers )
 
 
-{-| Get an object with its HTTP response headers.
+{-| Read an object with its HTTP response headers.
 -}
 getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) ) ( String, List ( String, String ) )
 getObjectWithHeaders bucket key =
@@ -444,7 +469,7 @@ stringBody =
     AWS.Core.Http.stringBody
 
 
-{-| Return a `Request` to write an object to S3, with default permissions (private).
+{-| Write an object to S3, with default permissions (private).
 
 The string resulting from a successful `send` isn't interesting.
 
@@ -456,7 +481,7 @@ putObject bucket key body =
         body
 
 
-{-| Return a `Request` to write an object to S3, with public-read permission.
+{-| Write an object to S3, with public-read permission.
 
 The string resulting from a successful `send` isn't interesting.
 
@@ -477,7 +502,7 @@ putHtmlObject bucket key html =
     putPublicObject bucket key <| htmlBody html
 
 
-{-| Return a Request to delete an S3 object.
+{-| Delete an S3 object.
 
 The string resulting from a successful `send` isn't interesting.
 
