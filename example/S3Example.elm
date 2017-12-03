@@ -149,7 +149,7 @@ putObject : Model -> Cmd Msg
 putObject model =
     let
         body =
-            S3.stringBody ("text/" ++ model.mimetype) model.text
+            S3.stringBody ("text/" ++ model.mimetype ++ "; charset=utf-8") model.text
     in
     S3.putPublicObject model.bucket model.key body
         |> S3.send model.account

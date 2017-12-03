@@ -25,15 +25,19 @@ module S3
         , htmlBody
         , jsonBody
         , listKeys
+        , objectPath
+        , parserRequest
         , putHtmlObject
         , putObject
         , putPublicObject
         , readAccounts
+        , requestBodyResult
         , send
         , stringBody
+        , stringRequest
         )
 
-{-| Elm client for the AWS Simple Storage Service (S3) or Digital Ocean Spaces.
+{-| Pure Elm client for the [AWS Simple Storage Service](https://aws.amazon.com/s3/) (S3) or [Digital Ocean Spaces](https://developers.digitalocean.com/documentation/spaces/).
 
 
 # Types
@@ -67,6 +71,11 @@ module S3
 # Reading accounts into Elm
 
 @docs readAccounts, decodeAccounts, accountDecoder
+
+
+# Low-level functions
+
+@docs objectPath, parserRequest, stringRequest, requestBodyResult
 
 -}
 
@@ -186,7 +195,7 @@ serviceModifier isDigitalOcean =
         identity
 
 
-{-| A Decoder for the Account type.
+{-| A `Decoder` for the `Account` type.
 -}
 accountDecoder : Decoder Account
 accountDecoder =
@@ -276,11 +285,6 @@ type alias Request b a =
     }
 
 
-identityAndThen : a -> Task Error a
-identityAndThen res =
-    Task.succeed res
-
-
 {-| Create a `Task` to send a signed request over the wire.
 -}
 send : Account -> Request b a -> Task Error a
@@ -349,6 +353,18 @@ addQuery query req =
     }
 
 
+{-| Low-level request creator.
+
+    stringRequest : Method -> String -> Body -> Request String String
+    stringRequest method url body =
+        parserRequest
+            method
+            url
+            body
+            requestBodyResult
+            Task.succeed
+
+-}
 parserRequest : Method -> String -> Body -> (Http.Response String -> Result String b) -> (b -> Task Error a) -> Request b a
 parserRequest method url body parser andThen =
     let
@@ -361,14 +377,23 @@ parserRequest method url body parser andThen =
     }
 
 
+{-| A parser for `parserRequest` that pulls the body out of the response as a string.
+-}
 requestBodyResult : Http.Response String -> Result String String
 requestBodyResult response =
     Ok response.body
 
 
+{-| Create a `Request` that returns its response body as a string.
+
+    getObject : Bucket -> Key -> Request String String
+    getObject bucket key =
+        stringRequest GET (objectPath bucket key) emptyBody
+
+-}
 stringRequest : Method -> String -> Body -> Request String String
 stringRequest method url body =
-    parserRequest method url body requestBodyResult identityAndThen
+    parserRequest method url body requestBodyResult Task.succeed
 
 
 {-| Create a `Request` to list the keys for an S3 bucket.
@@ -392,6 +417,11 @@ parseListBucketResponseResult xml =
             Task.fail err
 
 
+{-| Turn a bucket and a key into an object path.
+
+    "/" ++ bucket ++ "/" ++ key
+
+-}
 objectPath : Bucket -> Key -> String
 objectPath bucket key =
     "/" ++ bucket ++ "/" ++ key
@@ -424,7 +454,7 @@ getFullObject bucket key parser =
         (objectPath bucket key)
         emptyBody
         parser
-        identityAndThen
+        Task.succeed
 
 
 responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
@@ -452,7 +482,7 @@ getHeaders bucket key =
         (objectPath bucket key)
         emptyBody
         responseHeadersOnly
-        identityAndThen
+        Task.succeed
 
 
 {-| Create an HTML body for `putObject` and friends.
