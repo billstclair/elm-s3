@@ -84,6 +84,7 @@ type alias Model =
     , keyList : Maybe KeyList
     , text : String
     , mimetype : String
+    , headers : List ( String, String )
     }
 
 
@@ -91,6 +92,7 @@ type Msg
     = SetAccount String
     | ReceiveAccounts (Result Error (List Account))
     | ReceiveGetObject (Result Error ( String, List ( String, String ) ))
+    | ReceiveGetHeaders (Result Error (List ( String, String )))
     | SetBucket Bucket
     | ListBucket
     | ReceiveListBucket (Result Error KeyList)
@@ -115,6 +117,7 @@ init =
       , keyList = Nothing
       , text = ""
       , mimetype = "plain"
+      , headers = []
       }
     , Task.attempt ReceiveAccounts (readAccounts Nothing)
     )
@@ -133,6 +136,13 @@ getObject model =
     S3.getObjectWithHeaders model.bucket model.key
         |> S3.send model.account
         |> Task.attempt ReceiveGetObject
+
+
+getHeaders : Model -> Cmd Msg
+getHeaders model =
+    S3.getHeaders model.bucket model.key
+        |> S3.send model.account
+        |> Task.attempt ReceiveGetHeaders
 
 
 putObject : Model -> Cmd Msg
@@ -276,6 +286,18 @@ update msg model =
                         , text = res
                         , mimetype = headersMimetype headers
                       }
+                    , getHeaders model
+                    )
+
+        ReceiveGetHeaders result ->
+            case result of
+                Err err ->
+                    ( { model | display = toString err }
+                    , Cmd.none
+                    )
+
+                Ok headers ->
+                    ( { model | headers = headers }
                     , Cmd.none
                     )
 
@@ -432,6 +454,10 @@ view model =
                 , onInput SetText
                 ]
                 []
+            ]
+        , p []
+            [ text "Headers: "
+            , text <| toString model.headers
             ]
         , p []
             [ showKeys model ]

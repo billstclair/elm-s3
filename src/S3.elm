@@ -19,6 +19,7 @@ module S3
         , decodeAccounts
         , deleteObject
         , getFullObject
+        , getHeaders
         , getObject
         , getObjectWithHeaders
         , htmlBody
@@ -48,7 +49,7 @@ module S3
 # Creating S3 requests
 
 @docs listKeys
-@docs getObject, getFullObject, getObjectWithHeaders
+@docs getObject, getFullObject, getHeaders, getObjectWithHeaders
 @docs putHtmlObject, putPublicObject, putObject
 @docs deleteObject
 
@@ -436,6 +437,22 @@ responseHeaders response =
 getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) ) ( String, List ( String, String ) )
 getObjectWithHeaders bucket key =
     getFullObject bucket key responseHeaders
+
+
+responseHeadersOnly : Http.Response String -> Result String (List ( String, String ))
+responseHeadersOnly response =
+    Ok <| Dict.toList response.headers
+
+
+{-| Do a HEAD request to get only an object's headers.
+-}
+getHeaders : Bucket -> Key -> Request (List ( String, String )) (List ( String, String ))
+getHeaders bucket key =
+    parserRequest HEAD
+        (objectPath bucket key)
+        emptyBody
+        responseHeadersOnly
+        identityAndThen
 
 
 {-| Create an HTML body for `putObject` and friends.
