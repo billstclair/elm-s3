@@ -90,7 +90,7 @@ type alias Model =
 type Msg
     = SetAccount String
     | ReceiveAccounts (Result Error (List Account))
-    | ReceiveGetObject (Result Error String)
+    | ReceiveGetObject (Result Error ( String, List ( String, String ) ))
     | SetBucket Bucket
     | ListBucket
     | ReceiveListBucket (Result Error KeyList)
@@ -122,23 +122,17 @@ init =
 
 listBucket : Model -> Cmd Msg
 listBucket model =
-    let
-        task =
-            S3.listKeys model.bucket
-                |> S3.addQuery [ MaxKeys 100 ]
-                |> S3.send model.account
-    in
-    Task.attempt ReceiveListBucket task
+    S3.listKeys model.bucket
+        |> S3.addQuery [ MaxKeys 100 ]
+        |> S3.send model.account
+        |> Task.attempt ReceiveListBucket
 
 
 getObject : Model -> Cmd Msg
 getObject model =
-    let
-        task =
-            S3.getObject model.bucket model.key
-                |> S3.send model.account
-    in
-    Task.attempt ReceiveGetObject task
+    S3.getObjectWithHeaders model.bucket model.key
+        |> S3.send model.account
+        |> Task.attempt ReceiveGetObject
 
 
 putObject : Model -> Cmd Msg
@@ -146,22 +140,17 @@ putObject model =
     let
         body =
             S3.stringBody ("text/" ++ model.mimetype) model.text
-
-        task =
-            S3.putPublicObject model.bucket model.key body
-                |> S3.send model.account
     in
-    Task.attempt ReceivePutObject task
+    S3.putPublicObject model.bucket model.key body
+        |> S3.send model.account
+        |> Task.attempt ReceivePutObject
 
 
 deleteObject : Model -> Cmd Msg
 deleteObject model =
-    let
-        task =
-            S3.deleteObject model.bucket model.key
-                |> S3.send model.account
-    in
-    Task.attempt ReceiveDeleteObject task
+    S3.deleteObject model.bucket model.key
+        |> S3.send model.account
+        |> Task.attempt ReceiveDeleteObject
 
 
 defaultAccount : Account
@@ -183,6 +172,30 @@ findAccount model name =
 
         Just a ->
             a
+
+
+stringEqual : String -> String -> Bool
+stringEqual s1 s2 =
+    String.toLower s1 == String.toLower s2
+
+
+headersMimetype : List ( String, String ) -> String
+headersMimetype headers =
+    case
+        LE.find
+            (\header ->
+                stringEqual "content-type" <| Tuple.first header
+            )
+            headers
+    of
+        Nothing ->
+            "plain"
+
+        Just ( _, mimetype ) ->
+            if String.startsWith "text/html" <| String.toLower mimetype then
+                "html"
+            else
+                "plain"
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -257,10 +270,11 @@ update msg model =
                     , Cmd.none
                     )
 
-                Ok res ->
+                Ok ( res, headers ) ->
                     ( { model
                         | display = "Got " ++ model.key
                         , text = res
+                        , mimetype = headersMimetype headers
                       }
                     , Cmd.none
                     )
