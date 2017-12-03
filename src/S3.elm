@@ -269,11 +269,10 @@ makeService { region, isDigitalOcean } =
 `a` is the type of the successful `Task` result from `S3.send`.
 
 -}
-type Request b a
-    = Request
-        { httpRequest : AWS.Core.Http.Request b
-        , andThen : b -> Task Error a
-        }
+type alias Request b a =
+    { httpRequest : AWS.Core.Http.Request b
+    , andThen : b -> Task Error a
+    }
 
 
 identityAndThen : a -> Task Error a
@@ -291,12 +290,13 @@ send account req =
 
         credentials =
             makeCredentials account
+
+        req2 =
+            addHeaders [ AnyQuery "Accept" "*/*" ] req
     in
-    case addHeaders [ AnyQuery "Accept" "*/*" ] req of
-        Request { httpRequest, andThen } ->
-            AWS.Core.Http.send service credentials httpRequest
-                |> Task.onError (Task.fail << HttpError)
-                |> Task.andThen andThen
+    AWS.Core.Http.send service credentials req2.httpRequest
+        |> Task.onError (Task.fail << HttpError)
+        |> Task.andThen req2.andThen
 
 
 formatQuery : Query -> List ( String, String )
@@ -329,29 +329,23 @@ formatQuery query =
 {-| Add headers to a `Request`.
 -}
 addHeaders : Query -> Request b a -> Request b a
-addHeaders headers request =
-    case request of
-        Request req ->
-            Request
-                { req
-                    | httpRequest =
-                        AWS.Core.Http.addHeaders
-                            (formatQuery headers)
-                            req.httpRequest
-                }
+addHeaders headers req =
+    { req
+        | httpRequest =
+            AWS.Core.Http.addHeaders
+                (formatQuery headers)
+                req.httpRequest
+    }
 
 
 {-| Add query parameters to a `Request`.
 -}
 addQuery : Query -> Request b a -> Request b a
-addQuery query request =
-    case request of
-        Request req ->
-            Request
-                { req
-                    | httpRequest =
-                        AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
-                }
+addQuery query req =
+    { req
+        | httpRequest =
+            AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
+    }
 
 
 parserRequest : Method -> String -> Body -> (Http.Response String -> Result String b) -> (b -> Task Error a) -> Request b a
@@ -360,11 +354,10 @@ parserRequest method url body parser andThen =
         req =
             request method url body (JD.fail "Can't happen.")
     in
-    Request
-        { httpRequest =
-            AWS.Core.Http.setResponseParser parser req
-        , andThen = andThen
-        }
+    { httpRequest =
+        AWS.Core.Http.setResponseParser parser req
+    , andThen = andThen
+    }
 
 
 requestBodyResult : Http.Response String -> Result String String
