@@ -10,22 +10,13 @@
 ----------------------------------------------------------------------
 
 
-module S3.Types
-    exposing
-        ( Account
-        , Bucket
-        , CannedAcl(..)
-        , Error(..)
-        , Key
-        , KeyInfo
-        , KeyList
-        , Mimetype
-        , Owner
-        , Query
-        , QueryElement(..)
-        , StorageClass
-        , aclToString
-        )
+module S3.Types exposing
+    ( Error(..), Account
+    , Bucket, Key, Mimetype
+    , StorageClass, Owner, KeyInfo, KeyList
+    , Query, QueryElement(..), CannedAcl(..)
+    , aclToString
+    )
 
 {-| Types for S3 module
 
@@ -44,7 +35,8 @@ module S3.Types
 
 -}
 
-import AWS.Core.Service as Service exposing (Service)
+import AWS.Http
+import AWS.Service as Service exposing (Service)
 import Http
 import Xml.Extra exposing (DecodeDetails)
 
@@ -62,6 +54,7 @@ import Xml.Extra exposing (DecodeDetails)
 -}
 type Error
     = HttpError Http.Error
+    | AWSError AWS.Http.AWSAppError
     | MalformedXmlError String
     | ParseError DecodeDetails
     | DecodeError String
@@ -75,7 +68,6 @@ type alias Account =
     , accessKey : String
     , secretKey : String
     , buckets : List String
-    , isDigitalOcean : Bool
     }
 
 

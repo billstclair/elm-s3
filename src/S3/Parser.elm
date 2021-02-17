@@ -9,41 +9,56 @@
 --
 ----------------------------------------------------------------------
 
-module S3.Parser exposing ( parseListBucketResponse
-                          )
 
-import S3.Types exposing ( Error ( MalformedXmlError, ParseError )
-                         , StorageClass, Owner, KeyInfo, KeyList
-                         )
+module S3.Parser exposing (parseListBucketResponse)
 
-import Xml.Extra exposing ( TagSpec, Required ( Required, Optional, Multiple )
-                          , decodeXml, requiredTag, optionalTag, multipleTag
-                          )
+import Json.Decode as JD exposing (Decoder)
+import S3.Types
+    exposing
+        ( Error(..)
+        , KeyInfo
+        , KeyList
+        , Owner
+        , StorageClass
+        )
+import Xml.Extra
+    exposing
+        ( Required(..)
+        , TagSpec
+        , decodeXml
+        , multipleTag
+        , optionalTag
+        , requiredTag
+        )
 
-import Json.Decode as JD exposing ( Decoder )
 
-makeError : Xml.Extra.Error -> Error
+makeError : Xml.Extra.Error -> String
 makeError error =
     case error of
         Xml.Extra.XmlError msg ->
-            MalformedXmlError msg
-        Xml.Extra.DecodeError details ->
-            ParseError details
+            "Malformed Xml: " ++ msg
 
-parseListBucketResponse : String -> Result Error KeyList
+        Xml.Extra.DecodeError details ->
+            "Parse Error: " ++ details.msg
+
+
+parseListBucketResponse : String -> Result String KeyList
 parseListBucketResponse xml =
     case decodeXml xml "ListBucketResult" listBucketDecoder listBucketTagSpecs of
         Err err ->
             Err <| makeError err
+
         Ok res ->
             Ok res
+
 
 intOrString : Decoder String
 intOrString =
     JD.oneOf
         [ JD.string
-        , JD.int |> JD.andThen (\int -> JD.succeed (toString int))
+        , JD.int |> JD.andThen (\int -> JD.succeed (String.fromInt int))
         ]
+
 
 ownerDecoder : Decoder Owner
 ownerDecoder =
@@ -51,17 +66,20 @@ ownerDecoder =
         (JD.field "ID" intOrString)
         (JD.field "DisplayName" intOrString)
 
+
 ownerTagSpecs : List TagSpec
 ownerTagSpecs =
-    [ ("ID", Required)
-    , ("DisplayName", Required)
+    [ ( "ID", Required )
+    , ( "DisplayName", Required )
     ]
+
 
 defaultOwner : Owner
 defaultOwner =
     { id = "nothing"
     , displayName = "nobody"
     }
+
 
 bucketDecoder : Decoder KeyInfo
 bucketDecoder =
@@ -73,27 +91,36 @@ bucketDecoder =
         (JD.field "StorageClass" JD.string)
         (requiredTag "Owner" ownerDecoder ownerTagSpecs)
 
+
+
 -- DigitalOcean puts Owner after StorageClass
+
+
 bucketTagSpecs : List TagSpec
 bucketTagSpecs =
-    [ ("Key", Required)
-    , ("LastModified", Required)
-    , ("ETag", Required)
-    , ("Size", Required)
-    , ("StorageClass", Required)
-    , ("Owner", Required)
+    [ ( "Key", Required )
+    , ( "LastModified", Required )
+    , ( "ETag", Required )
+    , ( "Size", Required )
+    , ( "StorageClass", Required )
+    , ( "Owner", Required )
     ]
 
+
+
 -- Amazon S3 puts Owner before StorageClass
+
+
 amazonBucketTagSpecs : List TagSpec
 amazonBucketTagSpecs =
-    [ ("Key", Required)
-    , ("LastModified", Required)
-    , ("ETag", Required)
-    , ("Size", Required)
-    , ("Owner", Required)
-    , ("StorageClass", Required)
+    [ ( "Key", Required )
+    , ( "LastModified", Required )
+    , ( "ETag", Required )
+    , ( "Size", Required )
+    , ( "Owner", Required )
+    , ( "StorageClass", Required )
     ]
+
 
 boolOrString : Decoder Bool
 boolOrString =
@@ -101,8 +128,9 @@ boolOrString =
         [ JD.bool
         , JD.string
             |> JD.andThen
-               (\s -> JD.succeed <| s == "true")
-        ]                    
+                (\s -> JD.succeed <| s == "true")
+        ]
+
 
 listBucketDecoder : Decoder KeyList
 listBucketDecoder =
@@ -114,18 +142,19 @@ listBucketDecoder =
         (JD.field "MaxKeys" JD.int)
         (requiredTag "IsTruncated" boolOrString [])
         (JD.oneOf
-             [ multipleTag "Contents" bucketDecoder bucketTagSpecs
-             , multipleTag "Contents" bucketDecoder amazonBucketTagSpecs
-             ]
+            [ multipleTag "Contents" bucketDecoder bucketTagSpecs
+            , multipleTag "Contents" bucketDecoder amazonBucketTagSpecs
+            ]
         )
+
 
 listBucketTagSpecs : List TagSpec
 listBucketTagSpecs =
-    [ ("Name", Required)
-    , ("Prefix", Optional)
-    , ("Marker", Optional)
-    , ("NextMarker", Optional)
-    , ("MaxKeys", Required)
-    , ("IsTruncated", Required)
-    , ("Contents", Multiple)
+    [ ( "Name", Required )
+    , ( "Prefix", Optional )
+    , ( "Marker", Optional )
+    , ( "NextMarker", Optional )
+    , ( "MaxKeys", Required )
+    , ( "IsTruncated", Required )
+    , ( "Contents", Multiple )
     ]

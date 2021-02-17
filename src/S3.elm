@@ -1,4 +1,4 @@
-----------------------------------------------------------------------
+--------------------------------------------------------------------
 --
 -- S3.elm
 -- Elm client library for Amazon's S3 (Simple Storage Service)
@@ -10,32 +10,17 @@
 ----------------------------------------------------------------------
 
 
-module S3
-    exposing
-        ( Request
-        , accountDecoder
-        , addHeaders
-        , addQuery
-        , decodeAccounts
-        , deleteObject
-        , getFullObject
-        , getHeaders
-        , getObject
-        , getObjectWithHeaders
-        , htmlBody
-        , jsonBody
-        , listKeys
-        , objectPath
-        , parserRequest
-        , putHtmlObject
-        , putObject
-        , putPublicObject
-        , readAccounts
-        , requestBodyResult
-        , send
-        , stringBody
-        , stringRequest
-        )
+module S3 exposing
+    ( Request
+    , send
+    , listKeys
+    , getObject, getFullObject, getHeaders, getObjectWithHeaders
+    , putHtmlObject, putPublicObject, putObject
+    , deleteObject
+    , htmlBody, jsonBody, stringBody
+    , addQuery, addHeaders
+    , objectPath, parserRequest, stringRequest
+    )
 
 {-| Pure Elm client for the [AWS Simple Storage Service](https://aws.amazon.com/s3/) (S3) or [Digital Ocean Spaces](https://developers.digitalocean.com/documentation/spaces/).
 
@@ -79,21 +64,24 @@ module S3
 
 -}
 
-import AWS.Core.Credentials
+import AWS.Config as Config
+import AWS.Credentials
     exposing
         ( Credentials
         , fromAccessKeys
         )
-import AWS.Core.Http
+import AWS.Http
     exposing
-        ( Body
+        ( AWSAppError
+        , Body
         , Method(..)
+        , Path
         , emptyBody
         , request
         )
-import AWS.Core.Service as Service exposing (ApiVersion, Protocol, Service)
-import Dict
-import Http
+import AWS.Service as Service exposing (Service)
+import Dict exposing (Dict)
+import Http exposing (Metadata)
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
 import S3.Parser
@@ -132,7 +120,6 @@ Example JSON (the `buckets` are used only by the example code):
 
     [{"name": "Digital Ocean",
       "region": "nyc3",
-      "is-digital-ocean": true,
       "access-key": "<20-character access key>",
       "secret-key": "<40-character secret key>",
       "buckets": ["bucket1","bucket2"]
@@ -157,14 +144,42 @@ readAccounts maybeUrl =
                 Nothing ->
                     defaultAccountsUrl
 
-        request =
-            Http.getString url
-
         getTask =
-            Http.toTask request
+            getStringTask url
     in
     Task.andThen decodeAccountsTask <|
         Task.onError handleHttpError getTask
+
+
+getStringTask : String -> Task Http.Error String
+getStringTask url =
+    Http.task
+        { method = "GET"
+        , headers = []
+        , url = url
+        , body = Http.emptyBody
+        , resolver = Http.stringResolver stringResponseToResult
+        , timeout = Nothing
+        }
+
+
+stringResponseToResult : Http.Response String -> Result Http.Error String
+stringResponseToResult response =
+    case response of
+        Http.BadUrl_ s ->
+            Err <| Http.BadUrl s
+
+        Http.Timeout_ ->
+            Err Http.Timeout
+
+        Http.NetworkError_ ->
+            Err Http.NetworkError
+
+        Http.BadStatus_ metadata body ->
+            Err <| Http.BadStatus metadata.statusCode
+
+        Http.GoodStatus_ _ body ->
+            Ok body
 
 
 decodeAccountsTask : String -> Task Error (List Account)
@@ -187,19 +202,11 @@ makeCredentials account =
     fromAccessKeys account.accessKey account.secretKey
 
 
-serviceModifier : Bool -> Service -> Service
-serviceModifier isDigitalOcean =
-    if isDigitalOcean then
-        Service.toDigitalOceanSpaces
-    else
-        identity
-
-
 {-| A `Decoder` for the `Account` type.
 -}
 accountDecoder : Decoder Account
 accountDecoder =
-    JD.map6 Account
+    JD.map5 Account
         (JD.field "name" JD.string)
         (JD.oneOf
             [ JD.field "region" (JD.nullable JD.string)
@@ -209,11 +216,6 @@ accountDecoder =
         (JD.field "access-key" JD.string)
         (JD.field "secret-key" JD.string)
         (JD.field "buckets" (JD.list JD.string))
-        (JD.oneOf
-            [ JD.field "is-digital-ocean" JD.bool
-            , JD.succeed False
-            ]
-        )
 
 
 accountsDecoder : Decoder (List Account)
@@ -227,7 +229,7 @@ decodeAccounts : String -> Result Error (List Account)
 decodeAccounts json =
     case JD.decodeString accountsDecoder json of
         Err s ->
-            Err <| DecodeError s
+            Err <| DecodeError (JD.errorToString s)
 
         Ok accounts ->
             Ok accounts
@@ -238,39 +240,35 @@ endpointPrefix =
     "s3"
 
 
-apiVersion : ApiVersion
+apiVersion : Config.ApiVersion
 apiVersion =
     "2017-07-10"
 
 
-protocol : Protocol
+protocol : Config.Protocol
 protocol =
-    Service.restXml
+    Config.REST_XML
 
 
 makeService : Account -> Service
-makeService { region, isDigitalOcean } =
-    let
-        modifier =
-            serviceModifier isDigitalOcean
-    in
+makeService { region } =
     case region of
         Nothing ->
-            Service.defineGlobal
-                endpointPrefix
-                apiVersion
-                protocol
-                Service.signS3
-                modifier
+            Service.service <|
+                Config.defineGlobal
+                    endpointPrefix
+                    apiVersion
+                    protocol
+                    Config.SignS3
 
-        Just region ->
-            Service.defineRegional
-                endpointPrefix
-                apiVersion
-                protocol
-                Service.signS3
-                modifier
-                region
+        Just reg ->
+            Service.service <|
+                Config.defineRegional
+                    endpointPrefix
+                    apiVersion
+                    protocol
+                    Config.SignS3
+                    reg
 
 
 {-| A request that can be turned into a Task by `S3.send`.
@@ -279,15 +277,13 @@ makeService { region, isDigitalOcean } =
 `a` is the type of the successful `Task` result from `S3.send`.
 
 -}
-type alias Request b a =
-    { httpRequest : AWS.Core.Http.Request b
-    , andThen : b -> Task Error a
-    }
+type alias Request a =
+    AWS.Http.Request AWSAppError a
 
 
 {-| Create a `Task` to send a signed request over the wire.
 -}
-send : Account -> Request b a -> Task Error a
+send : Account -> Request a -> Task Error a
 send account req =
     let
         service =
@@ -299,9 +295,18 @@ send account req =
         req2 =
             addHeaders [ AnyQuery "Accept" "*/*" ] req
     in
-    AWS.Core.Http.send service credentials req2.httpRequest
-        |> Task.onError (Task.fail << HttpError)
-        |> Task.andThen req2.andThen
+    AWS.Http.send service credentials req2
+        |> Task.onError
+            (\error ->
+                (case error of
+                    AWS.Http.HttpError err ->
+                        HttpError err
+
+                    AWS.Http.AWSError err ->
+                        AWSError err
+                )
+                    |> Task.fail
+            )
 
 
 formatQuery : Query -> List ( String, String )
@@ -320,7 +325,7 @@ formatQuery query =
                         ( "marker", s )
 
                     MaxKeys cnt ->
-                        ( "max-keys", toString cnt )
+                        ( "max-keys", String.fromInt cnt )
 
                     Prefix s ->
                         ( "prefix", s )
@@ -333,88 +338,63 @@ formatQuery query =
 
 {-| Add headers to a `Request`.
 -}
-addHeaders : Query -> Request b a -> Request b a
+addHeaders : Query -> Request a -> Request a
 addHeaders headers req =
-    { req
-        | httpRequest =
-            AWS.Core.Http.addHeaders
-                (formatQuery headers)
-                req.httpRequest
-    }
+    AWS.Http.addHeaders (formatQuery headers) req
 
 
 {-| Add query parameters to a `Request`.
 -}
-addQuery : Query -> Request b a -> Request b a
+addQuery : Query -> Request a -> Request a
 addQuery query req =
-    { req
-        | httpRequest =
-            AWS.Core.Http.addQuery (formatQuery query) req.httpRequest
-    }
+    AWS.Http.addQuery (formatQuery query) req
 
 
 {-| Low-level request creator.
 
-    stringRequest : Method -> String -> Body -> Request String String
+    stringRequest : String -> Method -> Path -> Body -> Request String
     stringRequest method url body =
         parserRequest
+            name
             method
             url
             body
-            requestBodyResult
+            (identity >> Ok)
             Task.succeed
 
 -}
-parserRequest : Method -> String -> Body -> (Http.Response String -> Result String b) -> (b -> Task Error a) -> Request b a
-parserRequest method url body parser andThen =
-    let
-        req =
-            request method url body (JD.fail "Can't happen.")
-    in
-    { httpRequest =
-        AWS.Core.Http.setResponseParser parser req
-    , andThen = andThen
-    }
-
-
-{-| A parser for `parserRequest` that pulls the body out of the response as a string.
--}
-requestBodyResult : Http.Response String -> Result String String
-requestBodyResult response =
-    Ok response.body
+parserRequest : String -> Method -> Path -> Body -> (String -> Result String a) -> Request a
+parserRequest name method path body parser =
+    request name
+        method
+        path
+        body
+        (AWS.Http.stringBodyDecoder parser)
+        AWS.Http.awsAppErrDecoder
 
 
 {-| Create a `Request` that returns its response body as a string.
 
-    getObject : Bucket -> Key -> Request String String
+    getObject : Bucket -> Key -> Request String
     getObject bucket key =
-        stringRequest GET (objectPath bucket key) emptyBody
+        stringRequest "operation" GET (objectPath bucket key) emptyBody
 
 -}
-stringRequest : Method -> String -> Body -> Request String String
-stringRequest method url body =
-    parserRequest method url body requestBodyResult Task.succeed
+stringRequest : String -> Method -> Path -> Body -> Request String
+stringRequest name method path body =
+    parserRequest name method path body (identity >> Ok)
 
 
 {-| Create a `Request` to list the keys for an S3 bucket.
 -}
-listKeys : Bucket -> Request String KeyList
+listKeys : Bucket -> Request KeyList
 listKeys bucket =
-    parserRequest GET
+    parserRequest
+        "listKeys"
+        GET
         ("/" ++ bucket ++ "/")
         emptyBody
-        requestBodyResult
-        parseListBucketResponseResult
-
-
-parseListBucketResponseResult : String -> Task Error KeyList
-parseListBucketResponseResult xml =
-    case parseListBucketResponse xml of
-        Ok res ->
-            Task.succeed res
-
-        Err err ->
-            Task.fail err
+        parseListBucketResponse
 
 
 {-| Turn a bucket and a key into an object path.
@@ -432,71 +412,68 @@ objectPath bucket key =
 The contents will be the successful result of the `Task` created by `S3.send`.
 
 -}
-getObject : Bucket -> Key -> Request String String
+getObject : Bucket -> Key -> Request String
 getObject bucket key =
-    stringRequest GET (objectPath bucket key) emptyBody
+    stringRequest "getObject" GET (objectPath bucket key) emptyBody
 
 
 {-| Read an object and process the entire Http Response.
-
-    responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
-    responseHeaders response =
-        Ok <| ( response.body, Dict.toList response.headers )
-
-    getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) )
-    getObjectWithHeaders bucket key =
-        getFullObject bucket key responseHeaders
-
 -}
-getFullObject : Bucket -> Key -> (Http.Response String -> Result String a) -> Request a a
+getFullObject : Bucket -> Key -> (Metadata -> String -> Result String a) -> Request a
 getFullObject bucket key parser =
-    parserRequest GET
+    request "getFullObject"
+        GET
         (objectPath bucket key)
         emptyBody
         parser
-        Task.succeed
+        AWS.Http.awsAppErrDecoder
 
 
-responseHeaders : Http.Response String -> Result String ( String, List ( String, String ) )
-responseHeaders response =
-    Ok <| ( response.body, Dict.toList response.headers )
+responseHeaders : Metadata -> String -> Result String ( String, Dict String String )
+responseHeaders metadata body =
+    Ok <| ( body, metadata.headers )
 
 
 {-| Read an object with its HTTP response headers.
 -}
-getObjectWithHeaders : Bucket -> Key -> Request ( String, List ( String, String ) ) ( String, List ( String, String ) )
+getObjectWithHeaders : Bucket -> Key -> Request ( String, Dict String String )
 getObjectWithHeaders bucket key =
-    getFullObject bucket key responseHeaders
+    getFullObject bucket
+        key
+        responseHeaders
 
 
-responseHeadersOnly : Http.Response String -> Result String (List ( String, String ))
-responseHeadersOnly response =
-    Ok <| Dict.toList response.headers
+responseHeadersOnly : Metadata -> String -> Result String (Dict String String)
+responseHeadersOnly metadata body =
+    case responseHeaders metadata body of
+        Ok ( _, headers ) ->
+            Ok headers
+
+        Err e ->
+            Err e
 
 
 {-| Do a HEAD request to get only an object's headers.
 -}
-getHeaders : Bucket -> Key -> Request (List ( String, String )) (List ( String, String ))
+getHeaders : Bucket -> Key -> Request (Dict String String)
 getHeaders bucket key =
-    parserRequest HEAD
-        (objectPath bucket key)
-        emptyBody
+    getFullObject bucket
+        key
         responseHeadersOnly
-        Task.succeed
 
 
 {-| Create an HTML body for `putObject` and friends.
 -}
 htmlBody : String -> Body
 htmlBody =
-    AWS.Core.Http.stringBody "text/html;charset=utf-8"
+    AWS.Http.stringBody "text/html;charset=utf-8"
 
 
 {-| Create a JSON body for `putObject` and friends.
 -}
 jsonBody : JE.Value -> Body
 jsonBody =
-    AWS.Core.Http.jsonBody
+    AWS.Http.jsonBody
 
 
 {-| Create a body with any mimetype for `putObject` and friends.
@@ -506,7 +483,7 @@ jsonBody =
 -}
 stringBody : Mimetype -> String -> Body
 stringBody =
-    AWS.Core.Http.stringBody
+    AWS.Http.stringBody
 
 
 {-| Write an object to S3, with default permissions (private).
@@ -514,9 +491,10 @@ stringBody =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-putObject : Bucket -> Key -> Body -> Request String String
+putObject : Bucket -> Key -> Body -> Request String
 putObject bucket key body =
-    stringRequest PUT
+    stringRequest "putObject"
+        PUT
         (objectPath bucket key)
         body
 
@@ -526,7 +504,7 @@ putObject bucket key body =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-putPublicObject : Bucket -> Key -> Body -> Request String String
+putPublicObject : Bucket -> Key -> Body -> Request String
 putPublicObject bucket key body =
     putObject bucket key body
         |> addHeaders [ XAmzAcl AclPublicRead ]
@@ -537,7 +515,7 @@ putPublicObject bucket key body =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-putHtmlObject : Bucket -> Key -> String -> Request String String
+putHtmlObject : Bucket -> Key -> String -> Request String
 putHtmlObject bucket key html =
     putPublicObject bucket key <| htmlBody html
 
@@ -547,8 +525,9 @@ putHtmlObject bucket key html =
 The string resulting from a successful `send` isn't interesting.
 
 -}
-deleteObject : Bucket -> Key -> Request String String
+deleteObject : Bucket -> Key -> Request String
 deleteObject bucket key =
-    stringRequest DELETE
+    stringRequest "deleteObject"
+        DELETE
         (objectPath bucket key)
         emptyBody
