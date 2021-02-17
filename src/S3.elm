@@ -61,7 +61,7 @@ module S3 exposing
 
 # Low-level functions
 
-@docs objectPath, parserRequest, stringRequest, requestBodyResult
+@docs objectPath, parserRequest, stringRequest
 
 -}
 
