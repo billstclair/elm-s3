@@ -19,6 +19,7 @@ module S3 exposing
     , deleteObject
     , htmlBody, jsonBody, stringBody
     , addQuery, addHeaders
+    , readAccounts, decodeAccounts, accountDecoder
     , objectPath, parserRequest, stringRequest
     )
 
@@ -120,6 +121,7 @@ Example JSON (the `buckets` are used only by the example code):
 
     [{"name": "Digital Ocean",
       "region": "nyc3",
+      "is-digital-ocean": true,
       "access-key": "<20-character access key>",
       "secret-key": "<40-character secret key>",
       "buckets": ["bucket1","bucket2"]
@@ -206,11 +208,16 @@ makeCredentials account =
 -}
 accountDecoder : Decoder Account
 accountDecoder =
-    JD.map5 Account
+    JD.map6 Account
         (JD.field "name" JD.string)
         (JD.oneOf
             [ JD.field "region" (JD.nullable JD.string)
             , JD.succeed Nothing
+            ]
+        )
+        (JD.oneOf
+            [ JD.field "isDigitalOcean" JD.bool
+            , JD.succeed False
             ]
         )
         (JD.field "access-key" JD.string)
@@ -259,7 +266,7 @@ makeService { region } =
                     endpointPrefix
                     apiVersion
                     protocol
-                    Config.SignS3
+                    Config.SignV4
 
         Just reg ->
             Service.service <|
@@ -267,13 +274,12 @@ makeService { region } =
                     endpointPrefix
                     apiVersion
                     protocol
-                    Config.SignS3
+                    Config.SignV4
                     reg
 
 
 {-| A request that can be turned into a Task by `S3.send`.
 
-`b` is an internal type that you will never care about.
 `a` is the type of the successful `Task` result from `S3.send`.
 
 -}

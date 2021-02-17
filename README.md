@@ -18,4 +18,4 @@ For Amazon S3, you can use the AWS Management Console to set the CORS properties
 
 # Credits
 
-My thanks to Kevin Tonon for his [ktonen/elm-aws-core](http://package.elm-lang.org/packages/ktonon/elm-aws-core/latest) package. Without it, I would likely have thrown up my hands in despair over ever getting the signing and authorization crypto to work.
+My thanks to Kevin Tonon for his `elm-aws-core` package, and to the-sett for upgrading it to Elm 0.19.1: [the-sett/elm-aws-core](http://package.elm-lang.org/packages/the-sett/elm-aws-core/latest) package. Without it, I would likely have thrown up my hands in despair over ever getting the signing and authorization crypto to work.

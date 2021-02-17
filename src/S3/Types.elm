@@ -45,9 +45,7 @@ import Xml.Extra exposing (DecodeDetails)
 
 `HttpError` is from the standard Elm `Http` module.
 
-`MalformedXmlError` denotes an error in parsing the raw XML returned by S3.
-
-`ParseError` denotes an error turning that parsed XML into an Elm object.
+`AWSError` is from the AWS.Http module.
 
 `DecodeError` denotes a Decoder error in parsing S3 account info.
 
@@ -55,8 +53,6 @@ import Xml.Extra exposing (DecodeDetails)
 type Error
     = HttpError Http.Error
     | AWSError AWS.Http.AWSAppError
-    | MalformedXmlError String
-    | ParseError DecodeDetails
     | DecodeError String
 
 
@@ -65,6 +61,7 @@ type Error
 type alias Account =
     { name : String
     , region : Maybe String
+    , isDigitalOcean : Bool
     , accessKey : String
     , secretKey : String
     , buckets : List String

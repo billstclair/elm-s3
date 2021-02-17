@@ -12,7 +12,9 @@
 
 module S3Example exposing (..)
 
+import Browser
 import Debug exposing (log)
+import Dict exposing (Dict)
 import Html
     exposing
         ( Attribute
@@ -67,11 +69,11 @@ import Task
 
 
 main =
-    Html.program
+    Browser.element
         { init = init
-        , view = view
         , update = update
         , subscriptions = \_ -> Sub.none
+        , view = view
         }
 
 
@@ -91,8 +93,8 @@ type alias Model =
 type Msg
     = SetAccount String
     | ReceiveAccounts (Result Error (List Account))
-    | ReceiveGetObject (Result Error ( String, List ( String, String ) ))
-    | ReceiveGetHeaders (Result Error (List ( String, String )))
+    | ReceiveGetObject (Result Error ( String, Dict String String ))
+    | ReceiveGetHeaders (Result Error (Dict String String))
     | SetBucket Bucket
     | ListBucket
     | ReceiveListBucket (Result Error KeyList)
@@ -107,8 +109,8 @@ type Msg
     | ReceiveDeleteObject (Result Error String)
 
 
-init : ( Model, Cmd Msg )
-init =
+init : () -> ( Model, Cmd Msg )
+init _ =
     ( { display = "Fetching accounts..."
       , accounts = []
       , account = defaultAccount
@@ -204,6 +206,7 @@ headersMimetype headers =
         Just ( _, mimetype ) ->
             if String.startsWith "text/html" <| String.toLower mimetype then
                 "html"
+
             else
                 "plain"
 
@@ -246,7 +249,7 @@ update msg model =
         ReceiveListBucket result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
+                    ( { model | display = Debug.toString err }
                     , Cmd.none
                     )
 
@@ -268,6 +271,7 @@ update msg model =
                 ( { model | display = "Blank key." }
                 , Cmd.none
                 )
+
             else
                 ( { model | display = "Fetching " ++ model.key ++ "..." }
                 , getObject model
@@ -276,7 +280,7 @@ update msg model =
         ReceiveGetObject result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
+                    ( { model | display = Debug.toString err }
                     , Cmd.none
                     )
 
@@ -284,7 +288,7 @@ update msg model =
                     ( { model
                         | display = "Got " ++ model.key
                         , text = res
-                        , mimetype = headersMimetype headers
+                        , mimetype = headersMimetype <| Dict.toList headers
                       }
                     , getHeaders model
                     )
@@ -292,12 +296,12 @@ update msg model =
         ReceiveGetHeaders result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
+                    ( { model | display = Debug.toString err }
                     , Cmd.none
                     )
 
                 Ok headers ->
-                    ( { model | headers = headers }
+                    ( { model | headers = Dict.toList headers }
                     , Cmd.none
                     )
 
@@ -321,6 +325,7 @@ update msg model =
                 ( { model | display = "Blank key." }
                 , Cmd.none
                 )
+
             else
                 ( { model | display = "Writing " ++ model.key ++ "..." }
                 , putObject model
@@ -329,7 +334,7 @@ update msg model =
         ReceivePutObject result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
+                    ( { model | display = Debug.toString err }
                     , Cmd.none
                     )
 
@@ -343,6 +348,7 @@ update msg model =
                 ( { model | display = "Blank key." }
                 , Cmd.none
                 )
+
             else
                 ( { model | display = "Deleting " ++ model.key ++ "..." }
                 , deleteObject model
@@ -351,7 +357,7 @@ update msg model =
         ReceiveDeleteObject result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
+                    ( { model | display = Debug.toString err }
                     , Cmd.none
                     )
 
@@ -363,7 +369,7 @@ update msg model =
         ReceiveAccounts result ->
             case result of
                 Err err ->
-                    ( { model | display = toString err }
+                    ( { model | display = Debug.toString err }
                     , Cmd.none
                     )
 
@@ -396,7 +402,7 @@ update msg model =
 view : Model -> Html Msg
 view model =
     div
-        [ style [ ( "margin-left", "3em" ) ]
+        [ style "margin-left" "3em"
         ]
         [ p [] [ text model.display ]
         , p []
@@ -457,7 +463,7 @@ view model =
             ]
         , p []
             [ text "Headers: "
-            , text <| toString model.headers
+            , text <| Debug.toString model.headers
             ]
         , p []
             [ showKeys model ]
@@ -502,11 +508,9 @@ thText string =
 tdAlignHtml : String -> Html Msg -> Html Msg
 tdAlignHtml alignment html =
     td
-        [ style
-            [ ( "padding-left", "1em" )
-            , ( "padding-right", "1em" )
-            , ( "text-align", alignment )
-            ]
+        [ style "padding-left" "1em"
+        , style "padding-right" "1em"
+        , style "text-align" alignment
         ]
         [ html ]
 
@@ -542,6 +546,7 @@ keyUrl model key =
         prefix =
             if model.account.isDigitalOcean then
                 digitalOceanUrlPrefix
+
             else
                 s3UrlPrefix
     in
@@ -595,7 +600,7 @@ keyRow model info =
                     ]
                     [ text "*" ]
                 ]
-        , tdAlignText "right" <| toString info.size
+        , tdAlignText "right" <| String.fromInt info.size
         , tdText info.lastModified
         , tdText info.owner.displayName
         ]
