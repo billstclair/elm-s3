@@ -19,7 +19,7 @@ module S3 exposing
     , deleteObject
     , htmlBody, jsonBody, stringBody
     , addQuery, addHeaders
-    , readAccounts, decodeAccounts, accountDecoder
+    , readAccounts, decodeAccounts, accountDecoder, encodeAccount
     , objectPath, parserRequest, stringRequest
     )
 
@@ -56,7 +56,7 @@ module S3 exposing
 
 # Reading accounts into Elm
 
-@docs readAccounts, decodeAccounts, accountDecoder
+@docs readAccounts, decodeAccounts, accountDecoder, encodeAccount
 
 
 # Low-level functions
@@ -202,6 +202,31 @@ handleHttpError error =
 makeCredentials : Account -> Credentials
 makeCredentials account =
     fromAccessKeys account.accessKey account.secretKey
+
+
+{-| Encode an account as a JSON value.
+-}
+encodeAccount : Account -> JE.Value
+encodeAccount account =
+    JE.object <|
+        List.concat
+            [ [ ( "name", JE.string account.name ) ]
+            , case account.region of
+                Nothing ->
+                    []
+
+                Just region ->
+                    [ ( "region", JE.string region ) ]
+            , if account.isDigitalOcean then
+                [ ( "isDigitalOcean", JE.bool True ) ]
+
+              else
+                []
+            , [ ( "access-key", JE.string account.accessKey )
+              , ( "secret-key", JE.string account.secretKey )
+              , ( "buckets", JE.list JE.string account.buckets )
+              ]
+            ]
 
 
 {-| A `Decoder` for the `Account` type.
