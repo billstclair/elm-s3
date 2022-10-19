@@ -1,4 +1,4 @@
-[![elm-package](https://img.shields.io/badge/elm-2.0.1-blue.svg)](http://package.elm-lang.org/packages/billstclair/elm-s3/latest)
+[![elm-package](https://img.shields.io/badge/elm-2.2.0-blue.svg)](http://package.elm-lang.org/packages/billstclair/elm-s3/latest)
 
 Pure-Elm client for [Amazon S3](https://aws.amazon.com/s3/) and [DigitalOcean Spaces](https://developers.digitalocean.com/documentation/spaces/) key/value stores. It targets a subset of the DigitalOcean subset of the Amazon S3 API.
 

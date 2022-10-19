@@ -3,7 +3,7 @@
     "name": "billstclair/elm-s3",
     "summary": "elm-s3 is a pure Elm client library for Amazon S3 and Digital Ocean Spaces.",
     "license": "MIT",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "exposed-modules": [
         "S3",
         "S3.Types"
