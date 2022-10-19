@@ -20,7 +20,7 @@ module S3 exposing
     , htmlBody, jsonBody, stringBody
     , addQuery, addHeaders
     , readAccounts, decodeAccounts, accountDecoder, encodeAccount
-    , objectPath, parserRequest, stringRequest
+    , objectPath, parserRequest, stringRequest, requestUrl
     )
 
 {-| Pure Elm client for the [AWS Simple Storage Service](https://aws.amazon.com/s3/) (S3) or [Digital Ocean Spaces](https://developers.digitalocean.com/documentation/spaces/).
@@ -61,11 +61,11 @@ module S3 exposing
 
 # Low-level functions
 
-@docs objectPath, parserRequest, stringRequest
+@docs objectPath, parserRequest, stringRequest, requestUrl
 
 -}
 
-import AWS.Config as Config
+import AWS.Config as Config exposing (Endpoint(..))
 import AWS.Credentials
     exposing
         ( Credentials
@@ -218,7 +218,7 @@ encodeAccount account =
                 Just region ->
                     [ ( "region", JE.string region ) ]
             , if account.isDigitalOcean then
-                [ ( "isDigitalOcean", JE.bool True ) ]
+                [ ( "is-digital-ocean", JE.bool True ) ]
 
               else
                 []
@@ -241,7 +241,7 @@ accountDecoder =
             ]
         )
         (JD.oneOf
-            [ JD.field "isDigitalOcean" JD.bool
+            [ JD.field "is-digital-ocean" JD.bool
             , JD.succeed False
             ]
         )
@@ -267,8 +267,8 @@ decodeAccounts json =
             Ok accounts
 
 
-endpointPrefix : String
-endpointPrefix =
+awsEndpointPrefix : String
+awsEndpointPrefix =
     "s3"
 
 
@@ -282,25 +282,53 @@ protocol =
     Config.REST_XML
 
 
-makeService : Account -> Service
-makeService { region } =
-    case region of
-        Nothing ->
-            Service.service <|
-                Config.defineGlobal
-                    endpointPrefix
-                    apiVersion
-                    protocol
-                    Config.SignV4
+{-| Make an `AWS.Service.Service` for an `S3.Account`.
 
-        Just reg ->
-            Service.service <|
-                Config.defineRegional
-                    endpointPrefix
-                    apiVersion
-                    protocol
-                    Config.SignV4
-                    reg
+Sometimes useful for the `hostResolver`.
+
+-}
+makeService : Account -> Service
+makeService { region, isDigitalOcean } =
+    let
+        prefix =
+            -- Changed by `send` to the bucket for Digital Ocean.
+            awsEndpointPrefix
+
+        service =
+            case region of
+                Nothing ->
+                    Service.service <|
+                        Config.defineGlobal
+                            prefix
+                            apiVersion
+                            protocol
+                            Config.SignV4
+
+                Just reg ->
+                    Service.service <|
+                        Config.defineRegional
+                            prefix
+                            apiVersion
+                            protocol
+                            Config.SignV4
+                            reg
+    in
+    if isDigitalOcean then
+        -- regionResolver's default works for Digigal Ocean.
+        { service | hostResolver = digitalOceanHostResolver }
+
+    else
+        service
+
+
+digitalOceanHostResolver : Endpoint -> String -> String
+digitalOceanHostResolver endpoint prefix =
+    case endpoint of
+        GlobalEndpoint ->
+            prefix ++ ".digitaloceanspaces.com"
+
+        RegionalEndpoint rgn ->
+            prefix ++ "." ++ rgn ++ ".digitaloceanspaces.com"
 
 
 {-| A request that can be turned into a Task by `S3.send`.
@@ -312,13 +340,32 @@ type alias Request a =
     AWS.Http.Request AWSAppError a
 
 
-{-| Create a `Task` to send a signed request over the wire.
--}
-send : Account -> Request a -> Task Error a
-send account req =
+fudgeRequest : Account -> Request a -> ( Service, Request a )
+fudgeRequest account request =
     let
         service =
             makeService account
+    in
+    if not account.isDigitalOcean then
+        ( service, request )
+
+    else
+        let
+            ( bucket, key ) =
+                pathBucketAndKey request.path
+        in
+        ( { service | endpointPrefix = bucket }
+        , { request | path = "/" ++ key }
+        )
+
+
+{-| Create a `Task` to send a signed request over the wire.
+-}
+send : Account -> Request a -> Task Error a
+send account request =
+    let
+        ( service, req ) =
+            fudgeRequest account request
 
         credentials =
             makeCredentials account
@@ -438,6 +485,31 @@ objectPath bucket key =
     "/" ++ bucket ++ "/" ++ key
 
 
+pathBucketAndKey : String -> ( Bucket, Key )
+pathBucketAndKey path =
+    let
+        slashes =
+            String.indexes "/" path
+    in
+    case List.head slashes of
+        Nothing ->
+            ( "", path )
+
+        Just pos ->
+            if pos /= 0 then
+                ( "", path )
+
+            else
+                case List.head <| List.drop 1 slashes of
+                    Nothing ->
+                        ( String.dropLeft 1 path, "" )
+
+                    Just pos2 ->
+                        ( String.slice 1 pos2 path
+                        , String.dropLeft (pos2 + 1) path
+                        )
+
+
 {-| Read an S3 object.
 
 The contents will be the successful result of the `Task` created by `S3.send`.
@@ -446,6 +518,25 @@ The contents will be the successful result of the `Task` created by `S3.send`.
 getObject : Bucket -> Key -> Request String
 getObject bucket key =
     stringRequest "getObject" GET (objectPath bucket key) emptyBody
+
+
+{-| Return the URL string for a request.
+-}
+requestUrl : Account -> Request a -> String
+requestUrl account req =
+    let
+        ( service, request ) =
+            fudgeRequest account req
+
+        { hostResolver, endpoint, endpointPrefix } =
+            service
+
+        host =
+            hostResolver endpoint endpointPrefix
+    in
+    "https://"
+        ++ host
+        ++ request.path
 
 
 {-| Read an object and process the entire Http Response.

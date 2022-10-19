@@ -5,7 +5,7 @@ In order to use it, you'll need to get a secret key and access key. You can get 
 You can run the example in Elm reactor:
 
     cd .../elm-s3/example
-    elm-reactor
+    elm reactor
     
 Then aim your web browser at http://localhost:8000, to see this file, and click on [S3Example.elm](S3Example.elm) to run the code.
 

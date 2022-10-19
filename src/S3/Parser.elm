@@ -46,7 +46,12 @@ parseListBucketResponse : String -> Result String KeyList
 parseListBucketResponse xml =
     case decodeXml xml "ListBucketResult" listBucketDecoder listBucketTagSpecs of
         Err err ->
-            Err <| makeError err
+            case decodeXml xml "ListBucketResult" listBucketDecoder doListBucketTagSpecs of
+                Err err2 ->
+                    Err <| makeError err
+
+                Ok res ->
+                    Ok res
 
         Ok res ->
             Ok res
@@ -157,4 +162,16 @@ listBucketTagSpecs =
     , ( "MaxKeys", Required )
     , ( "IsTruncated", Required )
     , ( "Contents", Multiple )
+    ]
+
+
+doListBucketTagSpecs : List TagSpec
+doListBucketTagSpecs =
+    [ ( "Name", Required )
+    , ( "Prefix", Optional )
+    , ( "NextMarker", Optional )
+    , ( "MaxKeys", Required )
+    , ( "IsTruncated", Required )
+    , ( "Contents", Multiple )
+    , ( "Marker", Optional )
     ]

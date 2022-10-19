@@ -433,6 +433,17 @@ view model =
                 [ text "Delete" ]
             ]
         , p []
+            [ text "URL: "
+            , let
+                request =
+                    S3.getObject model.bucket model.key
+
+                url =
+                    S3.requestUrl model.account request
+              in
+              text url
+            ]
+        , p []
             [ input
                 [ type_ "radio"
                 , name "mimetype"

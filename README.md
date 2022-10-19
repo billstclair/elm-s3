@@ -2,6 +2,13 @@
 
 Pure-Elm client for [Amazon S3](https://aws.amazon.com/s3/) and [DigitalOcean Spaces](https://developers.digitalocean.com/documentation/spaces/) key/value stores. It targets a subset of the DigitalOcean subset of the Amazon S3 API.
 
+# URLs
+
+DigitalOcean Spaces doesn't really have the concept of a "bucket". Instead, it has a "unique name", which becomes a subdomain of the host. So the `"index.html"` key in the `"elm-s3"` bucket (in the `"us-east-1"` region for Amazon or the `"nyc3"` region for Digital Ocean) becomes:
+
+* Amazon: https://s3.us-east-1.amazonaws.com/elm-s3/index.html
+* Digital Ocean: https://elm-s3.nyc3.digitaloceanspaces.com/index.html
+
 # Example
 
 The [`example`](https://github.com/billstclair/elm-s3/tree/master/example) directory has some sample code, with a simple user interface.
