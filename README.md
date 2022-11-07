@@ -1,4 +1,4 @@
-[![elm-package](https://img.shields.io/badge/elm-2.2.0-blue.svg)](http://package.elm-lang.org/packages/billstclair/elm-s3/latest)
+[![elm-package](https://img.shields.io/badge/elm-3.0.0-blue.svg)](http://package.elm-lang.org/packages/billstclair/elm-s3/latest)
 
 Pure-Elm client for [Amazon S3](https://aws.amazon.com/s3/) and [DigitalOcean Spaces](https://developers.digitalocean.com/documentation/spaces/) key/value stores. It targets a subset of the DigitalOcean subset of the Amazon S3 API.
 
@@ -22,6 +22,10 @@ It's very easy to get CORS errors when doing S3 requests from a web browser. You
     s3cmd setcors cors.xml s3://BUCKET
     
 For Amazon S3, you can use the AWS Management Console to set the CORS properties. For Digital Ocean Spaces, you need to do it with an SDK or s3cmd. The Amazon S3 CORS documentation is [here](http://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html).
+
+And you'll need a JSON version of the CORS configuration for that:
+
+[cors.json](https://github.com/billstclair/elm-s3/tree/master/cors.json)
 
 # Credits
 
