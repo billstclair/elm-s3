@@ -94,7 +94,7 @@ bucketDecoder =
         (JD.field "ETag" JD.string)
         (JD.field "Size" JD.int)
         (JD.field "StorageClass" JD.string)
-        (requiredTag "Owner" ownerDecoder ownerTagSpecs)
+        (optionalTag "Owner" ownerDecoder ownerTagSpecs)
 
 
 
@@ -108,7 +108,7 @@ bucketTagSpecs =
     , ( "ETag", Required )
     , ( "Size", Required )
     , ( "StorageClass", Required )
-    , ( "Owner", Required )
+    , ( "Owner", Optional )
     ]
 
 

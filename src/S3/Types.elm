@@ -108,7 +108,7 @@ type alias KeyInfo =
     , eTag : String
     , size : Int
     , storageClass : StorageClass
-    , owner : Owner
+    , owner : Maybe Owner
     }
 
 

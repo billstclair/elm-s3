@@ -613,5 +613,10 @@ keyRow model info =
                 ]
         , tdAlignText "right" <| String.fromInt info.size
         , tdText info.lastModified
-        , tdText info.owner.displayName
+        , case info.owner of
+            Nothing ->
+                tdText "<none>"
+
+            Just owner ->
+                tdText owner.displayName
         ]
